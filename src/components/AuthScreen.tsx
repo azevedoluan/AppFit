@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User as UserIcon, Eye, EyeOff, Sparkles, AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react';
 import type { User } from '../types/auth';
+import { loginAccount, registerAccount, loginOrRegisterGoogleAccount } from '../utils/authStorage';
 
 interface AuthScreenProps {
   onLoginSuccess: (user: User) => void;
-  onContinueAsGuest: () => void;
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
-  onLoginSuccess,
-  onContinueAsGuest
+  onLoginSuccess
 }) => {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
@@ -21,6 +20,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Google Account Selector State
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [customGoogleEmail, setCustomGoogleEmail] = useState('');
+  const [customGoogleName, setCustomGoogleName] = useState('');
 
   // Handle Email + Password Submission
   const handleSubmit = (e: React.FormEvent) => {
@@ -34,8 +38,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMessage('A senha deve conter no mínimo 6 caracteres.');
+    if (password.length < 4) {
+      setErrorMessage('A senha deve conter no mínimo 4 caracteres.');
       return;
     }
 
@@ -45,72 +49,55 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         return;
       }
       if (password !== confirmPassword) {
-        setErrorMessage('As senhas não coincidem.');
+        setErrorMessage('As senhas não coincidem. Digite a mesma senha nos dois campos.');
         return;
       }
 
       setIsLoading(true);
       setTimeout(() => {
-        setIsLoading(false);
-        const newUser: User = {
-          id: `usr-${Date.now()}`,
-          name: name.trim(),
-          email: email.trim().toLowerCase(),
-          provider: 'email',
-          createdAt: new Date().toISOString()
-        };
-
-        // Save to users registry in localStorage
-        saveRegisteredUser(newUser, password);
-        setSuccessMessage('Conta criada com sucesso! Entrando...');
-        setTimeout(() => onLoginSuccess(newUser), 600);
-      }, 700);
+        try {
+          const user = registerAccount(name, email, password);
+          setIsLoading(false);
+          setSuccessMessage('Conta criada com sucesso! Entrando...');
+          setTimeout(() => onLoginSuccess(user), 500);
+        } catch (err: unknown) {
+          setIsLoading(false);
+          setErrorMessage(err instanceof Error ? err.message : 'Erro ao cadastrar usuário.');
+        }
+      }, 500);
     } else {
-      // Login
+      // Login with strict validation
       setIsLoading(true);
       setTimeout(() => {
-        setIsLoading(false);
-        const registeredUsers = getRegisteredUsers();
-        const existing = registeredUsers.find(
-          u => u.email === email.trim().toLowerCase() && u.password === password
-        );
-
-        if (existing) {
-          onLoginSuccess(existing.user);
-        } else {
-          // If no accounts yet, accept as login for ease of test or check
-          const fallbackUser: User = {
-            id: `usr-${Date.now()}`,
-            name: email.split('@')[0].replace('.', ' '),
-            email: email.trim().toLowerCase(),
-            provider: 'email',
-            createdAt: new Date().toISOString()
-          };
-          onLoginSuccess(fallbackUser);
+        try {
+          const user = loginAccount(email, password);
+          setIsLoading(false);
+          setSuccessMessage('Login realizado com sucesso!');
+          setTimeout(() => onLoginSuccess(user), 500);
+        } catch (err: unknown) {
+          setIsLoading(false);
+          setErrorMessage(err instanceof Error ? err.message : 'E-mail ou senha incorretos.');
         }
-      }, 700);
+      }, 500);
     }
   };
 
   // Handle Google Sign-In
-  const handleGoogleSignIn = () => {
+  const handleGoogleSelect = (gEmail: string, gName: string) => {
     setIsLoading(true);
     setErrorMessage(null);
+    setShowGoogleModal(false);
 
     setTimeout(() => {
       setIsLoading(false);
-      // Realistic Google Authenticated Profile
-      const googleUser: User = {
-        id: `google-${Date.now()}`,
-        name: 'Luan Azevedo',
-        email: 'luan.azevedo@gmail.com',
-        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-        provider: 'google',
-        createdAt: new Date().toISOString()
-      };
-      setSuccessMessage('Conectado com o Google com sucesso!');
-      setTimeout(() => onLoginSuccess(googleUser), 500);
-    }, 800);
+      const user = loginOrRegisterGoogleAccount(
+        gEmail,
+        gName,
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+      );
+      setSuccessMessage(`Conectado com o Google como ${gName}!`);
+      setTimeout(() => onLoginSuccess(user), 500);
+    }, 600);
   };
 
   return (
@@ -176,7 +163,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {/* Google Sign-In Button */}
         <button
           type="button"
-          onClick={handleGoogleSignIn}
+          onClick={() => setShowGoogleModal(true)}
           disabled={isLoading}
           className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs shadow-lg active:scale-98 transition-all flex items-center justify-center gap-3 border border-slate-200"
         >
@@ -236,6 +223,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 </div>
                 <input
                   type="text"
+                  required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Ex: Luan Azevedo"
@@ -253,6 +241,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               </div>
               <input
                 type="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu.email@exemplo.com"
@@ -269,6 +258,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               </div>
               <input
                 type={showPassword ? 'text' : 'password'}
+                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -293,6 +283,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 </div>
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
@@ -316,7 +307,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
               <button
                 type="button"
-                onClick={() => alert('Para redefinir sua senha, solicite suporte ou use o acesso rápido.')}
+                onClick={() => alert('Se você esqueceu sua senha, crie uma nova conta ou faça login com o Google.')}
                 className="text-cyan-400 hover:underline"
               >
                 Esqueceu a senha?
@@ -341,35 +332,80 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         </form>
       </div>
 
-      {/* Guest / Direct access shortcut for convenience */}
-      <div className="text-center mt-6">
-        <button
-          onClick={onContinueAsGuest}
-          className="text-xs font-semibold text-slate-500 hover:text-slate-300 transition-colors"
-        >
-          Continuar como convidado (sem salvar na nuvem) &rarr;
-        </button>
-      </div>
+      {/* Google Account Selection Modal */}
+      {showGoogleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="bg-[#0b1220] border border-slate-800 rounded-3xl w-full max-w-sm p-5 shadow-2xl space-y-3">
+            <h3 className="text-sm font-extrabold text-white text-center">
+              Fazer login com o Google
+            </h3>
+            <p className="text-xs text-slate-400 text-center">
+              Selecione sua conta Google para acessar seus treinos exclusivos:
+            </p>
+
+            {/* Quick account 1: Luan Azevedo */}
+            <button
+              onClick={() => handleGoogleSelect('luan.azevedo@gmail.com', 'Luan Azevedo')}
+              className="w-full p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 flex items-center gap-3 text-left transition-colors"
+            >
+              <div className="w-9 h-9 rounded-full bg-teal-500/20 text-teal-300 font-bold flex items-center justify-center text-xs">
+                LA
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-bold text-white">Luan Azevedo</div>
+                <div className="text-[11px] text-slate-400 truncate">luan.azevedo@gmail.com</div>
+              </div>
+            </button>
+
+            {/* Quick account 2: Outro Aluno */}
+            <button
+              onClick={() => handleGoogleSelect('aluno.teste@gmail.com', 'Aluno de Teste')}
+              className="w-full p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 flex items-center gap-3 text-left transition-colors"
+            >
+              <div className="w-9 h-9 rounded-full bg-blue-500/20 text-blue-300 font-bold flex items-center justify-center text-xs">
+                AT
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-bold text-white">Aluno de Teste</div>
+                <div className="text-[11px] text-slate-400 truncate">aluno.teste@gmail.com</div>
+              </div>
+            </button>
+
+            {/* Custom Google account input */}
+            <div className="pt-2 border-t border-slate-800 space-y-2">
+              <label className="text-[11px] text-slate-400 block font-semibold">Ou digite outro e-mail Google:</label>
+              <input
+                type="text"
+                placeholder="Nome do usuário"
+                value={customGoogleName}
+                onChange={(e) => setCustomGoogleName(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white"
+              />
+              <input
+                type="email"
+                placeholder="email@gmail.com"
+                value={customGoogleEmail}
+                onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white"
+              />
+              <button
+                disabled={!customGoogleEmail.includes('@')}
+                onClick={() => handleGoogleSelect(customGoogleEmail, customGoogleName || customGoogleEmail.split('@')[0])}
+                className="w-full py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs disabled:opacity-40"
+              >
+                Conectar com esta conta
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowGoogleModal(false)}
+              className="w-full py-2 text-xs text-slate-400 hover:text-white"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
-// Local storage mock helpers for registered users
-function saveRegisteredUser(user: User, password: string) {
-  try {
-    const list = getRegisteredUsers();
-    list.push({ user, password });
-    localStorage.setItem('appfit_registered_users', JSON.stringify(list));
-  } catch {
-    // Ignore
-  }
-}
-
-function getRegisteredUsers(): { user: User; password: string }[] {
-  try {
-    const raw = localStorage.getItem('appfit_registered_users');
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}

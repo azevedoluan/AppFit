@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
-import { initialWorkouts } from './data/initialWorkouts';
 import type { WorkoutDay, WorkoutCycle } from './types/workout';
 import type { User } from './types/auth';
 import { AuthScreen } from './components/AuthScreen';
@@ -15,12 +14,26 @@ import { PWAInstallModal } from './components/PWAInstallModal';
 import { WelcomeUploadScreen } from './components/WelcomeUploadScreen';
 import { Sparkles, FileSpreadsheet, Timer as TimerIcon } from 'lucide-react';
 import { sound } from './utils/sound';
-import { calculateCycleFromDates, calculateEndDateFromWeeks } from './utils/dateUtils';
+import {
+  loadUserWorkouts,
+  saveUserWorkouts,
+  loadUserCycle,
+  saveUserCycle,
+  loadUserSelectedDay,
+  saveUserSelectedDay,
+  loadUserAvatar,
+  saveUserAvatar,
+  clearUserWorkouts
+} from './utils/userWorkoutStorage';
 
 export const App: React.FC = () => {
-  // Authentication State
+  // Current Authenticated User (Strictly Scoped)
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('appfit_user');
+    // Clean old global keys from previous prototypes to ensure complete isolation
+    localStorage.removeItem('appfit_workout_days_v1');
+    localStorage.removeItem('appfit_workout_days_v2');
+
+    const saved = localStorage.getItem('appfit_current_session_user');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -31,51 +44,12 @@ export const App: React.FC = () => {
     return null;
   });
 
-  const [isGuest, setIsGuest] = useState<boolean>(() => {
-    return localStorage.getItem('appfit_is_guest') === 'true';
-  });
-
-  // Workouts state - Initialized to empty array [] so user tests uploading via image
-  const [workoutDays, setWorkoutDays] = useState<WorkoutDay[]>(() => {
-    const saved = localStorage.getItem('appfit_workout_days_v2');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
-
-  // User Profile (Apenas Nome e Foto)
-  const [userName, setUserName] = useState<string>(() => {
-    return localStorage.getItem('appfit_username') || 'Luan Azevedo';
-  });
-
-  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(() => {
-    return localStorage.getItem('appfit_avatar_url') || undefined;
-  });
-
-  // Workout Cycle (Validade do Treino em semanas e meses)
-  const [cycle, setCycle] = useState<WorkoutCycle>(() => {
-    const saved = localStorage.getItem('appfit_workout_cycle');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        // Fallback
-      }
-    }
-    const today = new Date().toISOString().split('T')[0];
-    const end = calculateEndDateFromWeeks(today, 8);
-    return calculateCycleFromDates(today, end);
-  });
-
-  // Selected Day
-  const [selectedDayId, setSelectedDayId] = useState<string>(() => {
-    return localStorage.getItem('appfit_selected_day') || '';
-  });
+  // User-specific states (loaded dynamically per user)
+  const [workoutDays, setWorkoutDays] = useState<WorkoutDay[]>([]);
+  const [cycle, setCycle] = useState<WorkoutCycle>(() => loadUserCycle(''));
+  const [userName, setUserName] = useState<string>('');
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
+  const [selectedDayId, setSelectedDayId] = useState<string>('');
 
   // Modals state
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -97,51 +71,68 @@ export const App: React.FC = () => {
 
   const timerIntervalRef = useRef<number | null>(null);
 
-  // Sync state to localStorage
-  useEffect(() => {
-    localStorage.setItem('appfit_workout_days_v2', JSON.stringify(workoutDays));
-  }, [workoutDays]);
-
-  useEffect(() => {
-    localStorage.setItem('appfit_username', userName);
-  }, [userName]);
-
+  // Whenever currentUser changes, load that user's specific data
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem('appfit_user', JSON.stringify(currentUser));
+      localStorage.setItem('appfit_current_session_user', JSON.stringify(currentUser));
+      const userWorkouts = loadUserWorkouts(currentUser.id);
+      const userCycle = loadUserCycle(currentUser.id);
+      const userSelectedDay = loadUserSelectedDay(currentUser.id);
+      const userAvatar = currentUser.avatarUrl || loadUserAvatar(currentUser.id);
+
+      setWorkoutDays(userWorkouts);
+      setCycle(userCycle);
+      setUserName(currentUser.name);
+      setAvatarUrl(userAvatar);
+
+      if (userWorkouts.length > 0) {
+        const validDay = userWorkouts.some(d => d.id === userSelectedDay)
+          ? userSelectedDay
+          : userWorkouts[0].id;
+        setSelectedDayId(validDay);
+      } else {
+        setSelectedDayId('');
+      }
     } else {
-      localStorage.removeItem('appfit_user');
+      localStorage.removeItem('appfit_current_session_user');
+      setWorkoutDays([]);
+      setSelectedDayId('');
+      setUserName('');
+      setAvatarUrl(undefined);
     }
   }, [currentUser]);
 
-  useEffect(() => {
-    localStorage.setItem('appfit_is_guest', String(isGuest));
-  }, [isGuest]);
-
-  useEffect(() => {
-    if (avatarUrl) {
-      localStorage.setItem('appfit_avatar_url', avatarUrl);
-    } else {
-      localStorage.removeItem('appfit_avatar_url');
+  // Sync workouts to this user's storage whenever modified
+  const updateAndSaveWorkouts = (newDays: WorkoutDay[]) => {
+    setWorkoutDays(newDays);
+    if (currentUser) {
+      saveUserWorkouts(currentUser.id, newDays);
     }
-  }, [avatarUrl]);
+  };
 
-  useEffect(() => {
-    localStorage.setItem('appfit_workout_cycle', JSON.stringify(cycle));
-  }, [cycle]);
-
-  useEffect(() => {
-    if (selectedDayId) {
-      localStorage.setItem('appfit_selected_day', selectedDayId);
+  // Sync cycle to this user's storage
+  const updateAndSaveCycle = (newCycle: WorkoutCycle) => {
+    setCycle(newCycle);
+    if (currentUser) {
+      saveUserCycle(currentUser.id, newCycle);
     }
-  }, [selectedDayId]);
+  };
 
-  // If workoutDays changes and selectedDayId is not valid, pick the first
-  useEffect(() => {
-    if (workoutDays.length > 0 && (!selectedDayId || !workoutDays.some(d => d.id === selectedDayId))) {
-      setSelectedDayId(workoutDays[0].id);
+  // Sync selected day to this user's storage
+  const handleSelectDay = (dayId: string) => {
+    setSelectedDayId(dayId);
+    if (currentUser) {
+      saveUserSelectedDay(currentUser.id, dayId);
     }
-  }, [workoutDays, selectedDayId]);
+  };
+
+  // Sync avatar to this user's storage
+  const handleUpdateAvatar = (url: string) => {
+    setAvatarUrl(url);
+    if (currentUser) {
+      saveUserAvatar(currentUser.id, url);
+    }
+  };
 
   // PWA Install Prompt Listener
   useEffect(() => {
@@ -183,35 +174,13 @@ export const App: React.FC = () => {
   // Auth Handlers
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
-    setIsGuest(false);
-    setUserName(user.name);
-    if (user.avatarUrl) {
-      setAvatarUrl(user.avatarUrl);
-    }
-  };
-
-  const handleContinueAsGuest = () => {
-    setIsGuest(true);
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
-    setIsGuest(false);
-    localStorage.removeItem('appfit_user');
-    localStorage.removeItem('appfit_is_guest');
   };
 
-  // Currently selected workout day
-  const currentWorkoutDay = workoutDays.find(d => d.id === selectedDayId) || workoutDays[0];
-
-  // Calculate total and completed sets for progress
-  const totalSets = currentWorkoutDay?.exercises.reduce((acc, ex) => acc + ex.sets.length, 0) || 0;
-  const completedSets = currentWorkoutDay?.exercises.reduce(
-    (acc, ex) => acc + ex.sets.filter(s => s.completed).length,
-    0
-  ) || 0;
-
-  // Trigger celebration confetti when workout completes
+  // Workout Completion Confetti
   const checkWorkoutCompletion = (updatedDays: WorkoutDay[]) => {
     const day = updatedDays.find(d => d.id === selectedDayId);
     if (!day) return;
@@ -226,7 +195,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Handlers
+  // Exercise and Sets Handlers
   const handleToggleSet = (exerciseId: string, setId: string) => {
     const updated = workoutDays.map(day => {
       if (day.id !== selectedDayId) return day;
@@ -244,12 +213,12 @@ export const App: React.FC = () => {
         })
       };
     });
-    setWorkoutDays(updated);
+    updateAndSaveWorkouts(updated);
     checkWorkoutCompletion(updated);
   };
 
   const handleUpdateWeight = (exerciseId: string, setId: string, weight: number) => {
-    setWorkoutDays(prev => prev.map(day => {
+    const updated = workoutDays.map(day => {
       if (day.id !== selectedDayId) return day;
       return {
         ...day,
@@ -264,11 +233,12 @@ export const App: React.FC = () => {
           };
         })
       };
-    }));
+    });
+    updateAndSaveWorkouts(updated);
   };
 
   const handleToggleExpand = (exerciseId: string) => {
-    setWorkoutDays(prev => prev.map(day => {
+    const updated = workoutDays.map(day => {
       if (day.id !== selectedDayId) return day;
       return {
         ...day,
@@ -277,32 +247,35 @@ export const App: React.FC = () => {
           return { ...ex, isExpanded: ex.isExpanded === false };
         })
       };
-    }));
+    });
+    updateAndSaveWorkouts(updated);
   };
 
   const handleExpandAll = () => {
-    setWorkoutDays(prev => prev.map(day => {
+    const updated = workoutDays.map(day => {
       if (day.id !== selectedDayId) return day;
       return {
         ...day,
         exercises: day.exercises.map(ex => ({ ...ex, isExpanded: true }))
       };
-    }));
+    });
+    updateAndSaveWorkouts(updated);
   };
 
   const handleCollapseAll = () => {
-    setWorkoutDays(prev => prev.map(day => {
+    const updated = workoutDays.map(day => {
       if (day.id !== selectedDayId) return day;
       return {
         ...day,
         exercises: day.exercises.map(ex => ({ ...ex, isExpanded: false }))
       };
-    }));
+    });
+    updateAndSaveWorkouts(updated);
   };
 
   const handleResetProgress = () => {
     if (confirm('Deseja zerar as marcações de conclusão do treino de hoje? As cargas registradas serão mantidas.')) {
-      setWorkoutDays(prev => prev.map(day => {
+      const updated = workoutDays.map(day => {
         if (day.id !== selectedDayId) return day;
         return {
           ...day,
@@ -311,7 +284,8 @@ export const App: React.FC = () => {
             sets: ex.sets.map(s => ({ ...s, completed: false }))
           }))
         };
-      }));
+      });
+      updateAndSaveWorkouts(updated);
     }
   };
 
@@ -337,7 +311,7 @@ export const App: React.FC = () => {
   };
 
   const handleAddSet = (exerciseId: string) => {
-    setWorkoutDays(prev => prev.map(day => {
+    const updated = workoutDays.map(day => {
       if (day.id !== selectedDayId) return day;
       return {
         ...day,
@@ -359,12 +333,13 @@ export const App: React.FC = () => {
           };
         })
       };
-    }));
+    });
+    updateAndSaveWorkouts(updated);
   };
 
   const handleDeleteExercise = (exerciseId: string) => {
     if (confirm('Tem certeza que deseja remover este exercício do treino?')) {
-      setWorkoutDays(prev => prev.map(day => {
+      const updated = workoutDays.map(day => {
         if (day.id !== selectedDayId) return day;
         const filtered = day.exercises.filter(ex => ex.id !== exerciseId);
         return {
@@ -372,46 +347,46 @@ export const App: React.FC = () => {
           subtitle: `${filtered.length} exercícios planejados`,
           exercises: filtered.map((ex, idx) => ({ ...ex, order: idx + 1 }))
         };
-      }));
+      });
+      updateAndSaveWorkouts(updated);
     }
-  };
-
-  const handleAddQuickExercise = () => {
-    setIsImportModalOpen(true);
   };
 
   const handleImportWorkoutDays = (newDays: WorkoutDay[]) => {
-    setWorkoutDays(newDays);
+    updateAndSaveWorkouts(newDays);
     if (newDays.length > 0) {
-      setSelectedDayId(newDays[0].id);
-    }
-  };
-
-  const handleResetToDefault = () => {
-    if (confirm('Deseja carregar a ficha de treino modelo do Luan Azevedo?')) {
-      setWorkoutDays(initialWorkouts);
-      setSelectedDayId('ter-inf-a');
+      handleSelectDay(newDays[0].id);
     }
   };
 
   const handleClearAllWorkouts = () => {
-    if (confirm('Tem certeza que deseja zerar todos os treinos do aplicativo para subir um novo?')) {
+    if (confirm('Tem certeza que deseja zerar todos os seus treinos atuais para subir um novo?')) {
+      if (currentUser) {
+        clearUserWorkouts(currentUser.id);
+      }
       setWorkoutDays([]);
       setSelectedDayId('');
-      localStorage.removeItem('appfit_workout_days_v2');
       setIsSettingsModalOpen(false);
     }
   };
 
-  const hasWorkouts = workoutDays.length > 0;
-  const isAuthenticated = currentUser !== null || isGuest;
+  // Currently selected workout day
+  const currentWorkoutDay = workoutDays.find(d => d.id === selectedDayId) || workoutDays[0];
 
-  // Se o usuário não estiver autenticado, exibe a tela de login/cadastro
-  if (!isAuthenticated) {
+  // Calculate total and completed sets for progress
+  const totalSets = currentWorkoutDay?.exercises.reduce((acc, ex) => acc + ex.sets.length, 0) || 0;
+  const completedSets = currentWorkoutDay?.exercises.reduce(
+    (acc, ex) => acc + ex.sets.filter(s => s.completed).length,
+    0
+  ) || 0;
+
+  const hasWorkouts = workoutDays.length > 0;
+
+  // Se não estiver logado, exibe tela de autenticação estrita
+  if (!currentUser) {
     return (
       <AuthScreen
         onLoginSuccess={handleLoginSuccess}
-        onContinueAsGuest={handleContinueAsGuest}
       />
     );
   }
@@ -422,7 +397,7 @@ export const App: React.FC = () => {
       <Header
         userName={userName}
         avatarUrl={avatarUrl}
-        onUpdateAvatar={(url) => setAvatarUrl(url)}
+        onUpdateAvatar={handleUpdateAvatar}
         cycle={cycle}
         totalSets={totalSets}
         completedSets={completedSets}
@@ -433,14 +408,14 @@ export const App: React.FC = () => {
         hasWorkouts={hasWorkouts}
       />
 
-      {/* Se houver treinos cadastrados, mostra o ciclo de dias e a ficha */}
+      {/* Se o usuário já tiver treinos ativos, mostra os dias da semana e os exercícios */}
       {hasWorkouts ? (
         <>
           {/* Week Day & Quick Status Navigator */}
           <DaySelector
             days={workoutDays}
             selectedDayId={selectedDayId}
-            onSelectDay={(dayId) => setSelectedDayId(dayId)}
+            onSelectDay={handleSelectDay}
           />
 
           {/* Current Workout Title & Subtitle */}
@@ -449,7 +424,7 @@ export const App: React.FC = () => {
               workoutDay={currentWorkoutDay}
               onExpandAll={handleExpandAll}
               onCollapseAll={handleCollapseAll}
-              onAddExercise={handleAddQuickExercise}
+              onAddExercise={() => setIsImportModalOpen(true)}
             />
           )}
 
@@ -470,7 +445,7 @@ export const App: React.FC = () => {
           </main>
         </>
       ) : (
-        /* Tela Inicial de Boas-Vindas e Upload de Treino (quando zerado) */
+        /* Se este usuário NÃO tiver treino cadastrado, abre a tela para subir o treino (Foto / Planilha / Manual) */
         <WelcomeUploadScreen
           onWorkoutsLoaded={handleImportWorkoutDays}
           onOpenManualModal={() => setIsImportModalOpen(true)}
@@ -535,13 +510,17 @@ export const App: React.FC = () => {
         authProvider={currentUser?.provider}
         onUpdateProfile={(name) => {
           setUserName(name);
-          setIsSettingsModalOpen(false);
+          if (currentUser) {
+            const updated = { ...currentUser, name };
+            setCurrentUser(updated);
+            localStorage.setItem('appfit_current_session_user', JSON.stringify(updated));
+          }
         }}
         cycle={cycle}
-        onUpdateCycle={(newCycle) => setCycle(newCycle)}
+        onUpdateCycle={updateAndSaveCycle}
         workoutDays={workoutDays}
-        onResetToDefault={handleResetToDefault}
-        onRestoreBackup={(days) => setWorkoutDays(days)}
+        onResetToDefault={() => {}}
+        onRestoreBackup={(days) => updateAndSaveWorkouts(days)}
         onOpenInstallModal={() => setIsInstallModalOpen(true)}
         onClearAllWorkouts={handleClearAllWorkouts}
         onLogout={handleLogout}
