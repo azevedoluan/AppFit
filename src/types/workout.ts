@@ -1,0 +1,51 @@
+export interface ExerciseSet {
+  id: string;
+  setNumber: number;
+  targetReps: string;
+  weight: number;
+  completed: boolean;
+  completedAt?: string;
+}
+
+export interface Exercise {
+  id: string;
+  order: number;
+  name: string;
+  category: string;
+  seriesCount: number;
+  repsDescription: string;
+  restDescription: string;
+  suggestedRestOptions: number[];
+  orientation: string;
+  sets: ExerciseSet[];
+  isExpanded?: boolean;
+  isOptional?: boolean;
+}
+
+export type DayCode = 'SEG' | 'TER' | 'QUA' | 'QUI' | 'SEX' | 'SAB' | 'DOM';
+
+export interface WorkoutDay {
+  id: string;
+  dayCode: DayCode;
+  dayName: string;
+  title: string;
+  shortLabel: string; // e.g. "Sup A", "Inf A"
+  categoryBadge: string; // e.g. "MEMBROS INFERIORES • A"
+  subtitle: string;
+  exercises: Exercise[];
+}
+
+export interface UserProfile {
+  name: string;
+  statusBadge: string;
+  levelBadge: string;
+  cycleInfo: string;
+  currentDayId: string;
+}
+
+export interface RestTimerState {
+  isActive: boolean;
+  secondsRemaining: number;
+  totalDuration: number;
+  exerciseName?: string;
+}

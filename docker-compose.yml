@@ -1,0 +1,11 @@
+services:
+  appfit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: appfit-pwa
+    restart: always
+    ports:
+      - "80:80"
+    environment:
+      - NODE_ENV=production
