@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { initialWorkouts } from './data/initialWorkouts';
-import type { WorkoutDay, Exercise } from './types/workout';
+import type { WorkoutDay, WorkoutCycle } from './types/workout';
 import { Header } from './components/Header';
 import { DaySelector } from './components/DaySelector';
 import { WorkoutHeader } from './components/WorkoutHeader';
@@ -10,38 +10,52 @@ import { RestTimer } from './components/RestTimer';
 import { ImportModal } from './components/ImportModal';
 import { SettingsModal } from './components/SettingsModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
+import { WelcomeUploadScreen } from './components/WelcomeUploadScreen';
 import { Plus, Sparkles, FileSpreadsheet, Timer as TimerIcon } from 'lucide-react';
 import { sound } from './utils/sound';
+import { calculateCycleFromDates, calculateEndDateFromWeeks } from './utils/dateUtils';
 
 export const App: React.FC = () => {
-  // Load initial data from localStorage if available
+  // Workouts state - Initialized to empty array [] so user tests uploading via image
   const [workoutDays, setWorkoutDays] = useState<WorkoutDay[]>(() => {
-    const saved = localStorage.getItem('appfit_workout_days_v1');
+    const saved = localStorage.getItem('appfit_workout_days_v2');
     if (saved) {
       try {
         return JSON.parse(saved);
       } catch {
-        return initialWorkouts;
+        return [];
       }
     }
-    return initialWorkouts;
+    return [];
   });
 
-  // User Profile
+  // User Profile (Apenas Nome e Foto)
   const [userName, setUserName] = useState<string>(() => {
     return localStorage.getItem('appfit_username') || 'Luan Azevedo';
   });
-  const [userRole, setUserRole] = useState<string>(() => {
-    return localStorage.getItem('appfit_user_role') || 'FIFA FITNESS ATIVO';
-  });
-  const [badgeLevel, setBadgeLevel] = useState<string>(() => {
-    return localStorage.getItem('appfit_user_badge') || 'Aço';
+
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(() => {
+    return localStorage.getItem('appfit_avatar_url') || undefined;
   });
 
-  // Selected Day (default to Terça / Inf A to showcase Image 1 layout)
+  // Workout Cycle (Validade do Treino em semanas e meses)
+  const [cycle, setCycle] = useState<WorkoutCycle>(() => {
+    const saved = localStorage.getItem('appfit_workout_cycle');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // Fallback
+      }
+    }
+    const today = new Date().toISOString().split('T')[0];
+    const end = calculateEndDateFromWeeks(today, 8);
+    return calculateCycleFromDates(today, end);
+  });
+
+  // Selected Day
   const [selectedDayId, setSelectedDayId] = useState<string>(() => {
-    const saved = localStorage.getItem('appfit_selected_day');
-    return saved || 'ter-inf-a';
+    return localStorage.getItem('appfit_selected_day') || '';
   });
 
   // Modals state
@@ -66,7 +80,7 @@ export const App: React.FC = () => {
 
   // Sync state to localStorage
   useEffect(() => {
-    localStorage.setItem('appfit_workout_days_v1', JSON.stringify(workoutDays));
+    localStorage.setItem('appfit_workout_days_v2', JSON.stringify(workoutDays));
   }, [workoutDays]);
 
   useEffect(() => {
@@ -74,16 +88,29 @@ export const App: React.FC = () => {
   }, [userName]);
 
   useEffect(() => {
-    localStorage.setItem('appfit_user_role', userRole);
-  }, [userRole]);
+    if (avatarUrl) {
+      localStorage.setItem('appfit_avatar_url', avatarUrl);
+    } else {
+      localStorage.removeItem('appfit_avatar_url');
+    }
+  }, [avatarUrl]);
 
   useEffect(() => {
-    localStorage.setItem('appfit_user_badge', badgeLevel);
-  }, [badgeLevel]);
+    localStorage.setItem('appfit_workout_cycle', JSON.stringify(cycle));
+  }, [cycle]);
 
   useEffect(() => {
-    localStorage.setItem('appfit_selected_day', selectedDayId);
+    if (selectedDayId) {
+      localStorage.setItem('appfit_selected_day', selectedDayId);
+    }
   }, [selectedDayId]);
+
+  // If workoutDays changes and selectedDayId is not valid, pick the first
+  useEffect(() => {
+    if (workoutDays.length > 0 && (!selectedDayId || !workoutDays.some(d => d.id === selectedDayId))) {
+      setSelectedDayId(workoutDays[0].id);
+    }
+  }, [workoutDays, selectedDayId]);
 
   // PWA Install Prompt Listener
   useEffect(() => {
@@ -309,74 +336,85 @@ export const App: React.FC = () => {
   };
 
   const handleResetToDefault = () => {
-    if (confirm('Deseja restaurar a ficha de treino original do Luan Azevedo?')) {
+    if (confirm('Deseja carregar a ficha de treino modelo do Luan Azevedo?')) {
       setWorkoutDays(initialWorkouts);
       setSelectedDayId('ter-inf-a');
-      localStorage.removeItem('appfit_workout_days_v1');
     }
   };
 
+  const handleClearAllWorkouts = () => {
+    if (confirm('Tem certeza que deseja zerar todos os treinos do aplicativo para subir um novo?')) {
+      setWorkoutDays([]);
+      setSelectedDayId('');
+      localStorage.removeItem('appfit_workout_days_v2');
+      setIsSettingsModalOpen(false);
+    }
+  };
+
+  const hasWorkouts = workoutDays.length > 0;
+
   return (
     <div className="min-h-screen bg-[#060a12] text-slate-100 flex flex-col max-w-lg mx-auto relative pb-28 shadow-2xl">
-      {/* Top Header */}
+      {/* Top Header com Nome, Espaço de Foto e Ciclo */}
       <Header
         userName={userName}
-        userRole={userRole}
-        badgeLevel={badgeLevel}
+        avatarUrl={avatarUrl}
+        onUpdateAvatar={(url) => setAvatarUrl(url)}
+        cycle={cycle}
         totalSets={totalSets}
         completedSets={completedSets}
         onResetProgress={handleResetProgress}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenInstall={() => setIsInstallModalOpen(true)}
         isInstallable={!!deferredPrompt}
+        hasWorkouts={hasWorkouts}
       />
 
-      {/* Week Day & Quick Status Navigator */}
-      <DaySelector
-        days={workoutDays}
-        selectedDayId={selectedDayId}
-        onSelectDay={(dayId) => setSelectedDayId(dayId)}
-      />
+      {/* Se houver treinos cadastrados, mostra o ciclo de dias e a ficha */}
+      {hasWorkouts ? (
+        <>
+          {/* Week Day & Quick Status Navigator */}
+          <DaySelector
+            days={workoutDays}
+            selectedDayId={selectedDayId}
+            onSelectDay={(dayId) => setSelectedDayId(dayId)}
+          />
 
-      {/* Current Workout Title & Subtitle */}
-      {currentWorkoutDay && (
-        <WorkoutHeader
-          workoutDay={currentWorkoutDay}
-          onExpandAll={handleExpandAll}
-          onCollapseAll={handleCollapseAll}
-          onAddExercise={handleAddQuickExercise}
+          {/* Current Workout Title & Subtitle */}
+          {currentWorkoutDay && (
+            <WorkoutHeader
+              workoutDay={currentWorkoutDay}
+              onExpandAll={handleExpandAll}
+              onCollapseAll={handleCollapseAll}
+              onAddExercise={handleAddQuickExercise}
+            />
+          )}
+
+          {/* Exercises List */}
+          <main className="px-4 space-y-3 flex-1">
+            {currentWorkoutDay?.exercises.map((exercise) => (
+              <ExerciseCard
+                key={exercise.id}
+                exercise={exercise}
+                onToggleExpand={handleToggleExpand}
+                onUpdateWeight={handleUpdateWeight}
+                onToggleSet={handleToggleSet}
+                onStartRestTimer={handleStartRestTimer}
+                onAddSet={handleAddSet}
+                onDeleteExercise={handleDeleteExercise}
+              />
+            ))}
+          </main>
+        </>
+      ) : (
+        /* Tela Inicial de Boas-Vindas e Upload de Treino (quando zerado) */
+        <WelcomeUploadScreen
+          onWorkoutsLoaded={handleImportWorkoutDays}
+          onOpenManualModal={() => setIsImportModalOpen(true)}
         />
       )}
 
-      {/* Exercises List */}
-      <main className="px-4 space-y-3 flex-1">
-        {currentWorkoutDay?.exercises.map((exercise) => (
-          <ExerciseCard
-            key={exercise.id}
-            exercise={exercise}
-            onToggleExpand={handleToggleExpand}
-            onUpdateWeight={handleUpdateWeight}
-            onToggleSet={handleToggleSet}
-            onStartRestTimer={handleStartRestTimer}
-            onAddSet={handleAddSet}
-            onDeleteExercise={handleDeleteExercise}
-          />
-        ))}
-
-        {currentWorkoutDay?.exercises.length === 0 && (
-          <div className="text-center py-12 px-4 rounded-3xl bg-slate-900/40 border border-slate-800">
-            <p className="text-sm text-slate-400 font-semibold mb-3">Nenhum exercício cadastrado para este dia.</p>
-            <button
-              onClick={() => setIsImportModalOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-bold text-xs shadow-lg"
-            >
-              Importar Planilha ou Criar Exercício
-            </button>
-          </div>
-        )}
-      </main>
-
-      {/* Floating Action Button / Quick Bar (Image 1 replica bottom element) */}
+      {/* Floating Action Button / Quick Bar */}
       <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
         <div className="max-w-lg mx-auto px-4 pb-4 flex items-center justify-between pointer-events-auto">
           {/* Quick Import Button */}
@@ -388,7 +426,7 @@ export const App: React.FC = () => {
             <span>Ficha / Imagem</span>
           </button>
 
-          {/* Central Sparkle Action Button (Image 1 replica) */}
+          {/* Central Sparkle Action Button */}
           <button
             onClick={() => handleStartRestTimer(60, 'Descanso Rápido')}
             className="w-14 h-14 rounded-full bg-gradient-to-tr from-cyan-500 via-teal-400 to-emerald-400 text-slate-950 flex items-center justify-center shadow-xl shadow-cyan-500/40 hover:scale-105 active:scale-95 transition-transform border-4 border-[#060a12]"
@@ -397,7 +435,7 @@ export const App: React.FC = () => {
             <Sparkles className="w-7 h-7 fill-slate-950" />
           </button>
 
-          {/* Quick Timer / Settings Button */}
+          {/* Quick Settings Button */}
           <button
             onClick={() => setIsSettingsModalOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-[#0e172a]/90 backdrop-blur-md border border-slate-700/80 text-slate-200 text-xs font-bold shadow-xl hover:bg-slate-800 active:scale-95 transition-all"
@@ -430,18 +468,17 @@ export const App: React.FC = () => {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         userName={userName}
-        userRole={userRole}
-        badgeLevel={badgeLevel}
-        onUpdateProfile={(name, role, badge) => {
+        onUpdateProfile={(name) => {
           setUserName(name);
-          setUserRole(role);
-          setBadgeLevel(badge);
           setIsSettingsModalOpen(false);
         }}
+        cycle={cycle}
+        onUpdateCycle={(newCycle) => setCycle(newCycle)}
         workoutDays={workoutDays}
         onResetToDefault={handleResetToDefault}
         onRestoreBackup={(days) => setWorkoutDays(days)}
         onOpenInstallModal={() => setIsInstallModalOpen(true)}
+        onClearAllWorkouts={handleClearAllWorkouts}
       />
 
       <PWAInstallModal

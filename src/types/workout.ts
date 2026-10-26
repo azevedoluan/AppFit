@@ -35,12 +35,18 @@ export interface WorkoutDay {
   exercises: Exercise[];
 }
 
+export interface WorkoutCycle {
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  durationWeeks: number;
+  durationMonths: number;
+  isActive: boolean;
+}
+
 export interface UserProfile {
   name: string;
-  statusBadge: string;
-  levelBadge: string;
-  cycleInfo: string;
-  currentDayId: string;
+  avatarUrl?: string;
+  cycle: WorkoutCycle;
 }
 
 export interface RestTimerState {
