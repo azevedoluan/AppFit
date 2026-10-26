@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, User, Download, Upload, RotateCcw, Cloud, Dumbbell, Calendar, FileSpreadsheet } from 'lucide-react';
+import { X, User, Download, Upload, RotateCcw, Cloud, Calendar, FileSpreadsheet, LogOut, Check } from 'lucide-react';
 import type { WorkoutDay, WorkoutCycle } from '../types/workout';
 import { exportToExcel } from '../utils/importUtils';
 import { calculateCycleFromDates, calculateEndDateFromWeeks, calculateEndDateFromMonths, formatDateBr } from '../utils/dateUtils';
@@ -8,6 +8,8 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   userName: string;
+  userEmail?: string;
+  authProvider?: string;
   onUpdateProfile: (name: string) => void;
   cycle: WorkoutCycle;
   onUpdateCycle: (cycle: WorkoutCycle) => void;
@@ -16,12 +18,15 @@ interface SettingsModalProps {
   onRestoreBackup: (days: WorkoutDay[]) => void;
   onOpenInstallModal: () => void;
   onClearAllWorkouts: () => void;
+  onLogout: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   userName,
+  userEmail,
+  authProvider,
   onUpdateProfile,
   cycle,
   onUpdateCycle,
@@ -29,13 +34,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onResetToDefault,
   onRestoreBackup,
   onOpenInstallModal,
-  onClearAllWorkouts
+  onClearAllWorkouts,
+  onLogout
 }) => {
   const [name, setName] = useState(userName);
   const [startDate, setStartDate] = useState(cycle.startDate);
   const [endDate, setEndDate] = useState(cycle.endDate);
   const [durationWeeks, setDurationWeeks] = useState(cycle.durationWeeks);
   const [showOciInfo, setShowOciInfo] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
 
   if (!isOpen) return null;
 
@@ -72,6 +79,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleSaveProfile = () => {
     onUpdateProfile(name);
+    setSavedSuccess(true);
+    setTimeout(() => setSavedSuccess(false), 2000);
   };
 
   const handleExportJson = () => {
@@ -124,27 +133,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        {/* Profile Settings (Apenas Nome) */}
+        {/* Profile Settings */}
         <div className="space-y-3 bg-slate-900/60 p-3.5 rounded-2xl border border-slate-800">
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
-            Nome do Atleta
-          </span>
-
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Luan Azevedo"
-              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
-            />
-            <button
-              onClick={handleSaveProfile}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs border border-slate-700 transition-colors"
-            >
-              Salvar
-            </button>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+              Conta de Usuário
+            </span>
+            {authProvider && (
+              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-slate-800 text-cyan-300 border border-cyan-500/30">
+                {authProvider === 'google' ? 'Google' : 'E-mail'}
+              </span>
+            )}
           </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Nome Completo</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ex: Luan Azevedo"
+                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+              />
+              <button
+                onClick={handleSaveProfile}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs border border-slate-700 transition-colors flex items-center gap-1"
+              >
+                {savedSuccess ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : 'Salvar'}
+              </button>
+            </div>
+          </div>
+
+          {userEmail && (
+            <div>
+              <label className="text-[11px] font-semibold text-slate-400 block mb-0.5">E-mail</label>
+              <div className="text-xs text-slate-300 font-mono bg-slate-950 p-2 rounded-xl border border-slate-800 truncate">
+                {userEmail}
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={() => {
+              if (confirm('Deseja sair da conta?')) {
+                onLogout();
+                onClose();
+              }
+            }}
+            className="w-full py-2 rounded-xl bg-red-950/30 hover:bg-red-950/50 text-red-400 font-bold text-xs border border-red-500/30 transition-colors flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Sair da Conta / Trocar Usuário</span>
+          </button>
         </div>
 
         {/* Workout Validity / Cycle Settings */}
@@ -156,7 +197,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </span>
           </div>
 
-          {/* Quick presets (Semanas e Meses) */}
+          {/* Quick presets */}
           <div>
             <label className="text-[11px] font-semibold text-slate-400 block mb-1">Duração Rápida:</label>
             <div className="grid grid-cols-4 gap-1.5">

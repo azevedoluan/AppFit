@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { initialWorkouts } from './data/initialWorkouts';
 import type { WorkoutDay, WorkoutCycle } from './types/workout';
+import type { User } from './types/auth';
+import { AuthScreen } from './components/AuthScreen';
 import { Header } from './components/Header';
 import { DaySelector } from './components/DaySelector';
 import { WorkoutHeader } from './components/WorkoutHeader';
@@ -11,11 +13,28 @@ import { ImportModal } from './components/ImportModal';
 import { SettingsModal } from './components/SettingsModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { WelcomeUploadScreen } from './components/WelcomeUploadScreen';
-import { Plus, Sparkles, FileSpreadsheet, Timer as TimerIcon } from 'lucide-react';
+import { Sparkles, FileSpreadsheet, Timer as TimerIcon } from 'lucide-react';
 import { sound } from './utils/sound';
 import { calculateCycleFromDates, calculateEndDateFromWeeks } from './utils/dateUtils';
 
 export const App: React.FC = () => {
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('appfit_user');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+
+  const [isGuest, setIsGuest] = useState<boolean>(() => {
+    return localStorage.getItem('appfit_is_guest') === 'true';
+  });
+
   // Workouts state - Initialized to empty array [] so user tests uploading via image
   const [workoutDays, setWorkoutDays] = useState<WorkoutDay[]>(() => {
     const saved = localStorage.getItem('appfit_workout_days_v2');
@@ -88,6 +107,18 @@ export const App: React.FC = () => {
   }, [userName]);
 
   useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('appfit_user', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('appfit_user');
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    localStorage.setItem('appfit_is_guest', String(isGuest));
+  }, [isGuest]);
+
+  useEffect(() => {
     if (avatarUrl) {
       localStorage.setItem('appfit_avatar_url', avatarUrl);
     } else {
@@ -148,6 +179,27 @@ export const App: React.FC = () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
   }, [restTimer.isActive, restTimer.secondsRemaining]);
+
+  // Auth Handlers
+  const handleLoginSuccess = (user: User) => {
+    setCurrentUser(user);
+    setIsGuest(false);
+    setUserName(user.name);
+    if (user.avatarUrl) {
+      setAvatarUrl(user.avatarUrl);
+    }
+  };
+
+  const handleContinueAsGuest = () => {
+    setIsGuest(true);
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setIsGuest(false);
+    localStorage.removeItem('appfit_user');
+    localStorage.removeItem('appfit_is_guest');
+  };
 
   // Currently selected workout day
   const currentWorkoutDay = workoutDays.find(d => d.id === selectedDayId) || workoutDays[0];
@@ -352,6 +404,17 @@ export const App: React.FC = () => {
   };
 
   const hasWorkouts = workoutDays.length > 0;
+  const isAuthenticated = currentUser !== null || isGuest;
+
+  // Se o usuário não estiver autenticado, exibe a tela de login/cadastro
+  if (!isAuthenticated) {
+    return (
+      <AuthScreen
+        onLoginSuccess={handleLoginSuccess}
+        onContinueAsGuest={handleContinueAsGuest}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#060a12] text-slate-100 flex flex-col max-w-lg mx-auto relative pb-28 shadow-2xl">
@@ -468,6 +531,8 @@ export const App: React.FC = () => {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         userName={userName}
+        userEmail={currentUser?.email}
+        authProvider={currentUser?.provider}
         onUpdateProfile={(name) => {
           setUserName(name);
           setIsSettingsModalOpen(false);
@@ -479,6 +544,7 @@ export const App: React.FC = () => {
         onRestoreBackup={(days) => setWorkoutDays(days)}
         onOpenInstallModal={() => setIsInstallModalOpen(true)}
         onClearAllWorkouts={handleClearAllWorkouts}
+        onLogout={handleLogout}
       />
 
       <PWAInstallModal
