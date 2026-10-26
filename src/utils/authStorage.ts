@@ -8,6 +8,32 @@ interface RegisteredAccount {
 const STORAGE_KEY = 'appfit_registered_users_v3';
 const PENDING_VERIFICATION_KEY = 'appfit_pending_verifications';
 
+// Clear all users, workouts, and sessions from database
+export function wipeAllUsersDatabase(): void {
+  try {
+    localStorage.removeItem('appfit_registered_users_v3');
+    localStorage.removeItem('appfit_registered_users_v2');
+    localStorage.removeItem('appfit_registered_users');
+    localStorage.removeItem('appfit_pending_verifications');
+    localStorage.removeItem('appfit_current_session_user');
+    localStorage.removeItem('appfit_user');
+    localStorage.removeItem('appfit_is_guest');
+    localStorage.removeItem('appfit_workout_days_v1');
+    localStorage.removeItem('appfit_workout_days_v2');
+
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('appfit_user_') || key.startsWith('appfit_'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch {
+    // Ignore
+  }
+}
+
 export function getRegisteredAccounts(): RegisteredAccount[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);

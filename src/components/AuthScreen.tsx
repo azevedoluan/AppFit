@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mail, Lock, User as UserIcon, Eye, EyeOff, Sparkles, AlertCircle, CheckCircle2, ArrowRight, ShieldCheck, RefreshCw, KeyRound } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, Eye, EyeOff, Sparkles, AlertCircle, CheckCircle2, ArrowRight, ShieldCheck, RefreshCw, Trash2 } from 'lucide-react';
 import type { User } from '../types/auth';
 import {
   loginAccount,
   startEmailVerification,
   verifyAndRegisterUser,
-  loginOrRegisterGoogleAccount
+  loginOrRegisterGoogleAccount,
+  wipeAllUsersDatabase
 } from '../utils/authStorage';
 
 interface AuthScreenProps {
@@ -554,6 +555,24 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             )}
           </button>
         </form>
+      </div>
+
+      {/* Wipe Database Action for Testing */}
+      <div className="text-center mt-5">
+        <button
+          type="button"
+          onClick={() => {
+            if (confirm('Tem certeza que deseja limpar todos os usuários cadastrados e reiniciar a base de dados?')) {
+              wipeAllUsersDatabase();
+              alert('Base de usuários limpa com sucesso!');
+              window.location.reload();
+            }
+          }}
+          className="text-[11px] text-slate-500 hover:text-red-400 transition-colors flex items-center justify-center gap-1.5 mx-auto py-1"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          <span>Limpar base de usuários e reiniciar testes</span>
+        </button>
       </div>
 
       {/* Real Google Account Selection Dialog */}

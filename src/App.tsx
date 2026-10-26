@@ -14,6 +14,7 @@ import { PWAInstallModal } from './components/PWAInstallModal';
 import { WelcomeUploadScreen } from './components/WelcomeUploadScreen';
 import { Sparkles, FileSpreadsheet, Timer as TimerIcon } from 'lucide-react';
 import { sound } from './utils/sound';
+import { wipeAllUsersDatabase } from './utils/authStorage';
 import {
   loadUserWorkouts,
   saveUserWorkouts,
@@ -29,9 +30,12 @@ import {
 export const App: React.FC = () => {
   // Current Authenticated User (Strictly Scoped)
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    // Clean old global keys from previous prototypes to ensure complete isolation
-    localStorage.removeItem('appfit_workout_days_v1');
-    localStorage.removeItem('appfit_workout_days_v2');
+    // Automatically wipe database for clean testing if not yet performed
+    if (!localStorage.getItem('appfit_database_clean_v6')) {
+      wipeAllUsersDatabase();
+      localStorage.setItem('appfit_database_clean_v6', 'true');
+      return null;
+    }
 
     const saved = localStorage.getItem('appfit_current_session_user');
     if (saved) {
