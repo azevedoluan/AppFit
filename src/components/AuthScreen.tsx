@@ -5,7 +5,7 @@ import {
   loginAccount,
   startEmailVerification,
   verifyAndRegisterUser,
-  loginOrRegisterGoogleAccount,
+  handleGoogleSignInRequest,
   wipeAllUsersDatabase
 } from '../utils/authStorage';
 
@@ -183,7 +183,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  // Handle Google Sign-In (Direct vinculation, no password needed)
+  // Handle Google Sign-In (Requires 6-digit code on first access)
   const handleGoogleSelect = (gEmail: string, gName: string) => {
     setIsLoading(true);
     setErrorMessage(null);
@@ -191,15 +191,27 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     setTimeout(() => {
       setIsLoading(false);
-      // Directly authenticated via Google account without password
-      const user = loginOrRegisterGoogleAccount(
+      const result = handleGoogleSignInRequest(
         gEmail,
         gName,
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
       );
-      setSuccessMessage(`Conectado com o Google (${gName})!`);
-      setTimeout(() => onLoginSuccess(user), 500);
-    }, 600);
+
+      if (result.type === 'needs_verification') {
+        // First access for this Google account -> requires 6-digit code verification!
+        setEmail(result.email);
+        setName(result.name);
+        setSimulatedCodeSent(result.code);
+        setVerificationDigits(['', '', '', '', '', '']);
+        setViewState('verify');
+        setResendCooldown(30);
+        setSuccessMessage(`Primeiro acesso com o Google! Código enviado para ${result.email}.`);
+      } else {
+        // Returning verified Google user -> signs in directly
+        setSuccessMessage(`Conectado com o Google (${gName})!`);
+        setTimeout(() => onLoginSuccess(result.user), 500);
+      }
+    }, 500);
   };
 
   // ==========================================
@@ -609,7 +621,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
             {/* Account 1: Luan Azevedo */}
             <button
-              onClick={() => handleGoogleSelect('luan.azevedo@gmail.com', 'Luan Azevedo')}
+              onClick={() => handleGoogleSelect('luanmazevedo@gmail.com', 'Luan Azevedo')}
               className="w-full p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 flex items-center gap-3 text-left transition-colors"
             >
               <div className="w-9 h-9 rounded-full bg-teal-500/20 text-teal-300 font-bold flex items-center justify-center text-xs">
@@ -617,7 +629,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-bold text-white">Luan Azevedo</div>
-                <div className="text-[11px] text-slate-400 truncate">luan.azevedo@gmail.com</div>
+                <div className="text-[11px] text-slate-400 truncate">luanmazevedo@gmail.com</div>
               </div>
             </button>
 

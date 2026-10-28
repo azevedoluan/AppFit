@@ -31,9 +31,9 @@ export const App: React.FC = () => {
   // Current Authenticated User (Strictly Scoped)
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     // Automatically wipe database for clean testing if not yet performed
-    if (!localStorage.getItem('appfit_database_clean_v6')) {
+    if (!localStorage.getItem('appfit_database_clean_v7')) {
       wipeAllUsersDatabase();
-      localStorage.setItem('appfit_database_clean_v6', 'true');
+      localStorage.setItem('appfit_database_clean_v7', 'true');
       return null;
     }
 

@@ -11,10 +11,10 @@ const PENDING_VERIFICATION_KEY = 'appfit_pending_verifications';
 // Clear all users, workouts, and sessions from database
 export function wipeAllUsersDatabase(): void {
   try {
-    localStorage.removeItem('appfit_registered_users_v3');
+    localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem('appfit_registered_users_v2');
     localStorage.removeItem('appfit_registered_users');
-    localStorage.removeItem('appfit_pending_verifications');
+    localStorage.removeItem(PENDING_VERIFICATION_KEY);
     localStorage.removeItem('appfit_current_session_user');
     localStorage.removeItem('appfit_user');
     localStorage.removeItem('appfit_is_guest');
@@ -59,22 +59,32 @@ export function generateVerificationCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// Store pending verification
-export function startEmailVerification(name: string, email: string, password?: string): string {
+// Store pending verification for any signup (Email or Google first access)
+export function startEmailVerification(
+  name: string,
+  email: string,
+  password?: string,
+  provider: 'email' | 'google' = 'email',
+  avatarUrl?: string
+): string {
   const cleanEmail = email.trim().toLowerCase();
   const accounts = getRegisteredAccounts();
 
-  // Check if already registered
-  const existing = accounts.find(a => a.user.email.toLowerCase() === cleanEmail);
-  if (existing) {
-    throw new Error('Este e-mail já está cadastrado. Alterne para a aba "Entrar" para fazer login.');
+  // If email signup, check for duplicate email
+  if (provider === 'email') {
+    const existing = accounts.find(a => a.user.email.toLowerCase() === cleanEmail && a.user.isEmailVerified);
+    if (existing) {
+      throw new Error('Este e-mail já está cadastrado. Alterne para a aba "Entrar" para fazer login.');
+    }
   }
 
   const code = generateVerificationCode();
   const pending: PendingVerification = {
-    name: name.trim(),
+    name: name.trim() || 'Usuário',
     email: cleanEmail,
     password,
+    provider,
+    avatarUrl,
     code,
     expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
   };
@@ -118,19 +128,28 @@ export function verifyAndRegisterUser(email: string, inputCode: string): User {
 
   // Code is valid! Create the verified user
   const accounts = getRegisteredAccounts();
+  const provider = pending.provider || (pending.password ? 'email' : 'google');
+
   const newUser: User = {
-    id: `usr-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
+    id: `${provider === 'google' ? 'google' : 'usr'}-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
     name: pending.name,
     email: cleanEmail,
-    provider: 'email',
+    avatarUrl: pending.avatarUrl,
+    provider,
     isEmailVerified: true,
     createdAt: new Date().toISOString()
   };
 
-  accounts.push({
-    user: newUser,
-    password: pending.password
-  });
+  // Replace or add
+  const existingIdx = accounts.findIndex(a => a.user.email.toLowerCase() === cleanEmail);
+  if (existingIdx >= 0) {
+    accounts[existingIdx] = { user: newUser, password: pending.password };
+  } else {
+    accounts.push({
+      user: newUser,
+      password: pending.password
+    });
+  }
 
   saveRegisteredAccounts(accounts);
 
@@ -141,7 +160,7 @@ export function verifyAndRegisterUser(email: string, inputCode: string): User {
   return newUser;
 }
 
-// Strict login validation
+// Strict email + password login validation
 export function loginAccount(email: string, password: string): User {
   const cleanEmail = email.trim().toLowerCase();
   const accounts = getRegisteredAccounts();
@@ -158,38 +177,26 @@ export function loginAccount(email: string, password: string): User {
   return account.user;
 }
 
-// Real Google Account Link (Google verified, no password needed)
-export function loginOrRegisterGoogleAccount(email: string, name: string, avatarUrl?: string): User {
+export type GoogleAuthResult =
+  | { type: 'success'; user: User }
+  | { type: 'needs_verification'; code: string; email: string; name: string };
+
+// Google Sign-In with First-Access Code Verification
+export function handleGoogleSignInRequest(
+  email: string,
+  name: string,
+  avatarUrl?: string
+): GoogleAuthResult {
   const cleanEmail = email.trim().toLowerCase();
   const accounts = getRegisteredAccounts();
 
-  const existing = accounts.find(a => a.user.email.toLowerCase() === cleanEmail);
+  // If user is already registered and verified:
+  const existing = accounts.find(a => a.user.email.toLowerCase() === cleanEmail && a.user.isEmailVerified);
   if (existing) {
-    // Update avatar or name if provided by Google
-    if (avatarUrl && !existing.user.avatarUrl) {
-      existing.user.avatarUrl = avatarUrl;
-    }
-    existing.user.provider = 'google';
-    existing.user.isEmailVerified = true;
-    saveRegisteredAccounts(accounts);
-    return existing.user;
+    return { type: 'success', user: existing.user };
   }
 
-  // Create new user directly verified via Google OAuth
-  const newGoogleUser: User = {
-    id: `google-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
-    name: name.trim() || 'Usuário Google',
-    email: cleanEmail,
-    avatarUrl,
-    provider: 'google',
-    isEmailVerified: true,
-    createdAt: new Date().toISOString()
-  };
-
-  accounts.push({
-    user: newGoogleUser
-  });
-
-  saveRegisteredAccounts(accounts);
-  return newGoogleUser;
+  // First access: generate verification code and require validation!
+  const code = startEmailVerification(name, cleanEmail, undefined, 'google', avatarUrl);
+  return { type: 'needs_verification', code, email: cleanEmail, name };
 }

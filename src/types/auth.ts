@@ -12,6 +12,8 @@ export interface PendingVerification {
   name: string;
   email: string;
   password?: string;
+  provider?: 'email' | 'google';
+  avatarUrl?: string;
   code: string;
   expiresAt: number;
 }
