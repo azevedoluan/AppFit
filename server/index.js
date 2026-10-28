@@ -110,6 +110,21 @@ app.post('/api/users/sync', async (req, res) => {
   }
 });
 
+// Limpeza total do banco de dados (reseta todos os dados para novo teste do zero)
+app.post('/api/reset-all', async (req, res) => {
+  try {
+    await pool.query(
+      'TRUNCATE TABLE users, workout_cycles, workout_programs, workout_days, exercises, exercise_sets, workout_sessions, workout_session_exercises, workout_session_sets, exercise_weight_history, user_preferences CASCADE;'
+    );
+    userSyncVersions.clear();
+    console.log('[AppFit Backend] Banco de dados PostgreSQL resetado com sucesso.');
+    res.json({ success: true, message: 'Banco de dados totalmente zerado.' });
+  } catch (err) {
+    console.error('Erro ao resetar banco:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============================================================================
 // 2. SINCRONIZAÇÃO E VERSÕES (POLLING BIDIRECIONAL)
 // ============================================================================
