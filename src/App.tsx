@@ -993,7 +993,6 @@ export const App: React.FC = () => {
         onOpenCalendar={() => setIsHistoryModalOpen(true)}
         isInstallable={!!deferredPrompt}
         hasWorkouts={hasWorkouts}
-        isDbConnected={isDbConnected}
       />
 
       {/* Se o usuário já tiver treinos ativos, mostra os dias da semana e os exercícios */}

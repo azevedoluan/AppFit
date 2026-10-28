@@ -16,7 +16,6 @@ interface HeaderProps {
   onOpenCalendar?: () => void;
   isInstallable: boolean;
   hasWorkouts: boolean;
-  isDbConnected?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,8 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenInstall,
   onOpenCalendar,
   isInstallable,
-  hasWorkouts,
-  isDbConnected = true
+  hasWorkouts
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const percentage = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
@@ -60,15 +58,6 @@ export const Header: React.FC<HeaderProps> = ({
             AF
           </div>
           <span className="font-extrabold tracking-tight text-white text-base">AppFit</span>
-          {isDbConnected && (
-            <div
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/30 text-[10px] text-emerald-300 font-bold shadow-sm"
-              title="Banco de Dados PostgreSQL conectado • Sincronização em tempo real ativa"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>PostgreSQL</span>
-            </div>
-          )}
         </div>
 
         <div className="flex items-center gap-2">
