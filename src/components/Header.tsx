@@ -13,6 +13,7 @@ interface HeaderProps {
   onResetProgress: () => void;
   onOpenSettings: () => void;
   onOpenInstall: () => void;
+  onOpenCalendar?: () => void;
   isInstallable: boolean;
   hasWorkouts: boolean;
 }
@@ -27,6 +28,7 @@ export const Header: React.FC<HeaderProps> = ({
   onResetProgress,
   onOpenSettings,
   onOpenInstall,
+  onOpenCalendar,
   isInstallable,
   hasWorkouts
 }) => {
@@ -70,13 +72,25 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           {hasWorkouts && (
-            <button
-              onClick={onResetProgress}
-              title="Reiniciar progresso de hoje"
-              className="w-8 h-8 rounded-lg bg-slate-800/60 hover:bg-slate-700/60 text-slate-300 flex items-center justify-center active:scale-90 transition-transform border border-slate-700/50"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
+            <>
+              {onOpenCalendar && (
+                <button
+                  onClick={onOpenCalendar}
+                  title="Histórico de Treinos (Calendário)"
+                  className="w-8 h-8 rounded-lg bg-teal-950/60 hover:bg-teal-900/60 text-teal-300 flex items-center justify-center active:scale-90 transition-transform border border-teal-500/40"
+                >
+                  <Calendar className="w-4 h-4" />
+                </button>
+              )}
+
+              <button
+                onClick={onResetProgress}
+                title="Reiniciar progresso de hoje"
+                className="w-8 h-8 rounded-lg bg-slate-800/60 hover:bg-slate-700/60 text-slate-300 flex items-center justify-center active:scale-90 transition-transform border border-slate-700/50"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            </>
           )}
 
           <button
@@ -127,27 +141,29 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Ciclo de Validade do Treino */}
-      <div
-        onClick={onOpenSettings}
-        className="mb-2.5 p-2 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 flex items-center justify-between text-xs cursor-pointer transition-colors"
-      >
-        <div className="flex items-center gap-2 truncate">
-          <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-          <div className="truncate text-slate-300">
-            <span className="font-bold text-white">Ciclo: </span>
-            <span className="text-cyan-300 font-semibold">{cycle.durationWeeks} sem ({cycle.durationMonths} meses)</span>
-            <span className="text-slate-400 text-[11px] ml-1">
-              • {formatDateBr(cycle.startDate)} até {formatDateBr(cycle.endDate)}
-            </span>
+      {/* Ciclo de Validade do Treino (Apenas se houver treinos cadastrados) */}
+      {hasWorkouts && (
+        <div
+          onClick={onOpenSettings}
+          className="mb-2.5 p-2 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 flex items-center justify-between text-xs cursor-pointer transition-colors"
+        >
+          <div className="flex items-center gap-2 truncate">
+            <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <div className="truncate text-slate-300">
+              <span className="font-bold text-white">Ciclo: </span>
+              <span className="text-cyan-300 font-semibold">{cycle.durationWeeks} sem ({cycle.durationMonths} meses)</span>
+              <span className="text-slate-400 text-[11px] ml-1">
+                • {formatDateBr(cycle.startDate)} até {formatDateBr(cycle.endDate)}
+              </span>
+            </div>
+          </div>
+
+          <div className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-950/70 border border-teal-500/40 text-[10px] font-bold text-teal-300 ml-2">
+            <Clock className="w-3 h-3 text-teal-400" />
+            <span>{daysRemaining} dias</span>
           </div>
         </div>
-
-        <div className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-950/70 border border-teal-500/40 text-[10px] font-bold text-teal-300 ml-2">
-          <Clock className="w-3 h-3 text-teal-400" />
-          <span>{daysRemaining} dias</span>
-        </div>
-      </div>
+      )}
 
       {/* Workout Progress Bar (quando houver treinos) */}
       {hasWorkouts && (

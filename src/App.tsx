@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
-import type { WorkoutDay, WorkoutCycle } from './types/workout';
+import type { WorkoutDay, WorkoutCycle, CompletedWorkoutRecord } from './types/workout';
 import type { User } from './types/auth';
 import { AuthScreen } from './components/AuthScreen';
 import { Header } from './components/Header';
@@ -12,7 +12,9 @@ import { ImportModal } from './components/ImportModal';
 import { SettingsModal } from './components/SettingsModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { WelcomeUploadScreen } from './components/WelcomeUploadScreen';
-import { Sparkles, FileSpreadsheet, Timer as TimerIcon } from 'lucide-react';
+import { WorkoutCompletionModal } from './components/WorkoutCompletionModal';
+import { WorkoutHistoryCalendarModal } from './components/WorkoutHistoryCalendarModal';
+import { Sparkles, FileSpreadsheet, Timer as TimerIcon, Calendar as CalendarIcon } from 'lucide-react';
 import { sound } from './utils/sound';
 import { wipeAllUsersDatabase } from './utils/authStorage';
 import {
@@ -24,7 +26,9 @@ import {
   saveUserSelectedDay,
   loadUserAvatar,
   saveUserAvatar,
-  clearUserWorkouts
+  clearUserWorkouts,
+  loadUserWorkoutHistory,
+  addUserWorkoutHistoryRecord
 } from './utils/userWorkoutStorage';
 
 export const App: React.FC = () => {
@@ -54,11 +58,20 @@ export const App: React.FC = () => {
   const [userName, setUserName] = useState<string>('');
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
   const [selectedDayId, setSelectedDayId] = useState<string>('');
+  const [workoutHistory, setWorkoutHistory] = useState<CompletedWorkoutRecord[]>([]);
+
+  // Active Workout Stopwatch State
+  const [isWorkoutActive, setIsWorkoutActive] = useState(false);
+  const [workoutStartedAt, setWorkoutStartedAt] = useState<string>('');
+  const [workoutElapsedSeconds, setWorkoutElapsedSeconds] = useState(0);
 
   // Modals state
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false);
+  const [pendingCompletionRecord, setPendingCompletionRecord] = useState<CompletedWorkoutRecord | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   // Rest Timer State
@@ -74,6 +87,7 @@ export const App: React.FC = () => {
   });
 
   const timerIntervalRef = useRef<number | null>(null);
+  const workoutStopwatchIntervalRef = useRef<number | null>(null);
 
   // Whenever currentUser changes, load that user's specific data
   useEffect(() => {
@@ -83,11 +97,13 @@ export const App: React.FC = () => {
       const userCycle = loadUserCycle(currentUser.id);
       const userSelectedDay = loadUserSelectedDay(currentUser.id);
       const userAvatar = currentUser.avatarUrl || loadUserAvatar(currentUser.id);
+      const userHistory = loadUserWorkoutHistory(currentUser.id);
 
       setWorkoutDays(userWorkouts);
       setCycle(userCycle);
       setUserName(currentUser.name);
       setAvatarUrl(userAvatar);
+      setWorkoutHistory(userHistory);
 
       if (userWorkouts.length > 0) {
         const validDay = userWorkouts.some(d => d.id === userSelectedDay)
@@ -103,8 +119,64 @@ export const App: React.FC = () => {
       setSelectedDayId('');
       setUserName('');
       setAvatarUrl(undefined);
+      setWorkoutHistory([]);
     }
   }, [currentUser]);
+
+  // Workout Stopwatch Interval
+  useEffect(() => {
+    if (isWorkoutActive) {
+      workoutStopwatchIntervalRef.current = window.setInterval(() => {
+        setWorkoutElapsedSeconds(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (workoutStopwatchIntervalRef.current) {
+        clearInterval(workoutStopwatchIntervalRef.current);
+      }
+    }
+    return () => {
+      if (workoutStopwatchIntervalRef.current) {
+        clearInterval(workoutStopwatchIntervalRef.current);
+      }
+    };
+  }, [isWorkoutActive]);
+
+  // Rest Timer Interval
+  useEffect(() => {
+    if (restTimer.isActive && restTimer.secondsRemaining > 0) {
+      timerIntervalRef.current = window.setInterval(() => {
+        setRestTimer((prev) => {
+          if (prev.secondsRemaining <= 1) {
+            sound.playTimerCompleteSound();
+            return { ...prev, isActive: false, secondsRemaining: 0 };
+          }
+          if (prev.secondsRemaining <= 4) {
+            sound.playTickSound();
+          }
+          return { ...prev, secondsRemaining: prev.secondsRemaining - 1 };
+        });
+      }, 1000);
+    } else {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    }
+
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    };
+  }, [restTimer.isActive, restTimer.secondsRemaining]);
+
+  // PWA Install Prompt Listener
+  useEffect(() => {
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
+  }, []);
 
   // Sync workouts to this user's storage whenever modified
   const updateAndSaveWorkouts = (newDays: WorkoutDay[]) => {
@@ -138,43 +210,6 @@ export const App: React.FC = () => {
     }
   };
 
-  // PWA Install Prompt Listener
-  useEffect(() => {
-    const handleBeforeInstall = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-    };
-  }, []);
-
-  // Timer interval handling
-  useEffect(() => {
-    if (restTimer.isActive && restTimer.secondsRemaining > 0) {
-      timerIntervalRef.current = window.setInterval(() => {
-        setRestTimer((prev) => {
-          if (prev.secondsRemaining <= 1) {
-            sound.playTimerCompleteSound();
-            return { ...prev, isActive: false, secondsRemaining: 0 };
-          }
-          if (prev.secondsRemaining <= 4) {
-            sound.playTickSound();
-          }
-          return { ...prev, secondsRemaining: prev.secondsRemaining - 1 };
-        });
-      }, 1000);
-    } else {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    }
-
-    return () => {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    };
-  }, [restTimer.isActive, restTimer.secondsRemaining]);
-
   // Auth Handlers
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
@@ -182,21 +217,72 @@ export const App: React.FC = () => {
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setIsWorkoutActive(false);
   };
 
-  // Workout Completion Confetti
-  const checkWorkoutCompletion = (updatedDays: WorkoutDay[]) => {
-    const day = updatedDays.find(d => d.id === selectedDayId);
-    if (!day) return;
-    const allSets = day.exercises.flatMap(e => e.sets);
-    if (allSets.length > 0 && allSets.every(s => s.completed)) {
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
-      sound.playTimerCompleteSound();
+  // Workout Session Handlers
+  const handleStartWorkout = () => {
+    setIsWorkoutActive(true);
+    setWorkoutStartedAt(new Date().toISOString());
+    setWorkoutElapsedSeconds(0);
+  };
+
+  const handleEndWorkoutManually = () => {
+    if (confirm('Deseja encerrar o treino agora?')) {
+      finishWorkoutSession();
     }
+  };
+
+  // Finish Workout Session (Called automatically on last exercise or manually)
+  const finishWorkoutSession = (explicitDays?: WorkoutDay[]) => {
+    setIsWorkoutActive(false);
+    const daysToUse = explicitDays || workoutDays;
+    const currentDay = daysToUse.find(d => d.id === selectedDayId) || daysToUse[0];
+    if (!currentDay) return;
+
+    const allDaySets = currentDay.exercises.flatMap(e => e.sets);
+    const completedDaySets = allDaySets.filter(s => s.completed).length;
+
+    const record: CompletedWorkoutRecord = {
+      id: `rec-${Date.now()}`,
+      workoutDayId: currentDay.id,
+      workoutTitle: currentDay.title,
+      dayName: currentDay.dayName,
+      startedAt: workoutStartedAt || new Date(Date.now() - Math.max(60, workoutElapsedSeconds) * 1000).toISOString(),
+      endedAt: new Date().toISOString(),
+      durationSeconds: Math.max(1, workoutElapsedSeconds),
+      totalSets: allDaySets.length,
+      completedSets: completedDaySets,
+      exercisesSummary: currentDay.exercises.map(e => ({
+        name: e.name,
+        completedSets: e.sets.filter(s => s.completed).length,
+        maxWeight: Math.max(0, ...e.sets.map(s => s.weight))
+      }))
+    };
+
+    setPendingCompletionRecord(record);
+    setIsCompletionModalOpen(true);
+
+    confetti({
+      particleCount: 120,
+      spread: 75,
+      origin: { y: 0.6 }
+    });
+    sound.playTimerCompleteSound();
+  };
+
+  // Save Record with user comment
+  const handleSaveCompletedWorkout = (record: CompletedWorkoutRecord, comment: string) => {
+    if (!currentUser) return;
+    const finalRecord: CompletedWorkoutRecord = {
+      ...record,
+      comment: comment || undefined
+    };
+
+    addUserWorkoutHistoryRecord(currentUser.id, finalRecord);
+    setWorkoutHistory(prev => [finalRecord, ...prev]);
+    setIsCompletionModalOpen(false);
+    setPendingCompletionRecord(null);
   };
 
   // Exercise and Sets Handlers
@@ -217,8 +303,17 @@ export const App: React.FC = () => {
         })
       };
     });
+
     updateAndSaveWorkouts(updated);
-    checkWorkoutCompletion(updated);
+
+    // Check if the workout just finished (all sets marked completed)
+    const activeDay = updated.find(d => d.id === selectedDayId);
+    if (activeDay) {
+      const allSets = activeDay.exercises.flatMap(e => e.sets);
+      if (allSets.length > 0 && allSets.every(s => s.completed)) {
+        finishWorkoutSession(updated);
+      }
+    }
   };
 
   const handleUpdateWeight = (exerciseId: string, setId: string, weight: number) => {
@@ -290,6 +385,8 @@ export const App: React.FC = () => {
         };
       });
       updateAndSaveWorkouts(updated);
+      setIsWorkoutActive(false);
+      setWorkoutElapsedSeconds(0);
     }
   };
 
@@ -370,6 +467,7 @@ export const App: React.FC = () => {
       }
       setWorkoutDays([]);
       setSelectedDayId('');
+      setIsWorkoutActive(false);
       setIsSettingsModalOpen(false);
     }
   };
@@ -397,7 +495,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#060a12] text-slate-100 flex flex-col max-w-lg mx-auto relative pb-28 shadow-2xl">
-      {/* Top Header com Nome, Espaço de Foto e Ciclo */}
+      {/* Top Header com Nome, Espaço de Foto e Ciclo (Oculto se sem treino) */}
       <Header
         userName={userName}
         avatarUrl={avatarUrl}
@@ -408,6 +506,7 @@ export const App: React.FC = () => {
         onResetProgress={handleResetProgress}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenInstall={() => setIsInstallModalOpen(true)}
+        onOpenCalendar={() => setIsHistoryModalOpen(true)}
         isInstallable={!!deferredPrompt}
         hasWorkouts={hasWorkouts}
       />
@@ -422,13 +521,17 @@ export const App: React.FC = () => {
             onSelectDay={handleSelectDay}
           />
 
-          {/* Current Workout Title & Subtitle */}
+          {/* Current Workout Title, Iniciar Treino e Contagem de Tempo */}
           {currentWorkoutDay && (
             <WorkoutHeader
               workoutDay={currentWorkoutDay}
               onExpandAll={handleExpandAll}
               onCollapseAll={handleCollapseAll}
               onAddExercise={() => setIsImportModalOpen(true)}
+              isWorkoutActive={isWorkoutActive}
+              elapsedSeconds={workoutElapsedSeconds}
+              onStartWorkout={handleStartWorkout}
+              onEndWorkout={handleEndWorkoutManually}
             />
           )}
 
@@ -477,13 +580,13 @@ export const App: React.FC = () => {
             <Sparkles className="w-7 h-7 fill-slate-950" />
           </button>
 
-          {/* Quick Settings Button */}
+          {/* Quick Calendar / History Button */}
           <button
-            onClick={() => setIsSettingsModalOpen(true)}
+            onClick={() => setIsHistoryModalOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-[#0e172a]/90 backdrop-blur-md border border-slate-700/80 text-slate-200 text-xs font-bold shadow-xl hover:bg-slate-800 active:scale-95 transition-all"
           >
-            <TimerIcon className="w-4 h-4 text-teal-400" />
-            <span>Ajustes</span>
+            <CalendarIcon className="w-4 h-4 text-teal-400" />
+            <span>Histórico</span>
           </button>
         </div>
       </div>
@@ -498,6 +601,21 @@ export const App: React.FC = () => {
           onAdjustTime={handleAdjustTimer}
         />
       )}
+
+      {/* Completion Modal with Comment */}
+      <WorkoutCompletionModal
+        isOpen={isCompletionModalOpen}
+        onClose={() => setIsCompletionModalOpen(false)}
+        record={pendingCompletionRecord}
+        onSaveRecord={handleSaveCompletedWorkout}
+      />
+
+      {/* History Calendar Modal */}
+      <WorkoutHistoryCalendarModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        history={workoutHistory}
+      />
 
       {/* Modals */}
       <ImportModal

@@ -55,3 +55,28 @@ export interface RestTimerState {
   totalDuration: number;
   exerciseName?: string;
 }
+
+export interface CompletedWorkoutRecord {
+  id: string;
+  workoutDayId: string;
+  workoutTitle: string;
+  dayName: string;
+  startedAt: string; // ISO string
+  endedAt: string;   // ISO string
+  durationSeconds: number;
+  totalSets: number;
+  completedSets: number;
+  comment?: string;
+  exercisesSummary: {
+    name: string;
+    completedSets: number;
+    maxWeight: number;
+  }[];
+}
+
+export interface ActiveWorkoutSession {
+  isActive: boolean;
+  workoutDayId: string;
+  startedAt: string;
+  elapsedSeconds: number;
+}

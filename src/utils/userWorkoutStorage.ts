@@ -1,4 +1,4 @@
-import type { WorkoutDay, WorkoutCycle } from '../types/workout';
+import type { WorkoutDay, WorkoutCycle, CompletedWorkoutRecord } from '../types/workout';
 import { calculateCycleFromDates, calculateEndDateFromWeeks } from './dateUtils';
 
 // Get storage keys scoped to user
@@ -107,4 +107,38 @@ export function clearUserWorkouts(userId: string): void {
   if (!userId) return;
   localStorage.removeItem(getWorkoutsKey(userId));
   localStorage.removeItem(getSelectedDayKey(userId));
+}
+
+function getHistoryKey(userId: string): string {
+  return `appfit_user_history_${userId}`;
+}
+
+export function loadUserWorkoutHistory(userId: string): CompletedWorkoutRecord[] {
+  if (!userId) return [];
+  try {
+    const raw = localStorage.getItem(getHistoryKey(userId));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // Ignore error
+  }
+  return [];
+}
+
+export function saveUserWorkoutHistory(userId: string, history: CompletedWorkoutRecord[]): void {
+  if (!userId) return;
+  try {
+    localStorage.setItem(getHistoryKey(userId), JSON.stringify(history));
+  } catch {
+    // Ignore error
+  }
+}
+
+export function addUserWorkoutHistoryRecord(userId: string, record: CompletedWorkoutRecord): void {
+  if (!userId) return;
+  const existing = loadUserWorkoutHistory(userId);
+  const updated = [record, ...existing];
+  saveUserWorkoutHistory(userId, updated);
 }
