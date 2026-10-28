@@ -162,21 +162,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                       <span>Marcar</span>
                     )}
                   </button>
-
-                  {/* Remove specific Set Button */}
-                  {exercise.sets.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteSet(exercise.id, set.id);
-                      }}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-950/40 active:scale-95 transition-all"
-                      title={`Remover série ${set.setNumber}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
                 </div>
               </div>
             ))}
