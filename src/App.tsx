@@ -713,6 +713,32 @@ export const App: React.FC = () => {
     updateAndSaveWorkouts(updated);
   };
 
+  const handleDeleteSet = (exerciseId: string, setId: string) => {
+    const updated = workoutDays.map(day => {
+      if (day.id !== selectedDayId) return day;
+      return {
+        ...day,
+        exercises: day.exercises.map(ex => {
+          if (ex.id !== exerciseId) return ex;
+          if (ex.sets.length <= 1) return ex; // Mantém no mínimo 1 série
+
+          const filtered = ex.sets.filter(s => s.id !== setId);
+          const renumbered = filtered.map((s, idx) => ({
+            ...s,
+            setNumber: idx + 1
+          }));
+
+          return {
+            ...ex,
+            seriesCount: renumbered.length,
+            sets: renumbered
+          };
+        })
+      };
+    });
+    updateAndSaveWorkouts(updated);
+  };
+
   const handleDeleteExercise = (exerciseId: string) => {
     if (confirm('Tem certeza que deseja remover este exercício do treino?')) {
       const updated = workoutDays.map(day => {
@@ -821,6 +847,7 @@ export const App: React.FC = () => {
                 onToggleSet={handleToggleSet}
                 onStartRestTimer={handleStartRestTimer}
                 onAddSet={handleAddSet}
+                onDeleteSet={handleDeleteSet}
                 onDeleteExercise={handleDeleteExercise}
                 onOpenWeightHistory={(ex) => setSelectedExerciseForHistory(ex)}
               />

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Exercise, ExerciseSet } from '../types/workout';
-import { Lightbulb, ChevronDown, ChevronUp, Clock, Plus, Trash2, CheckCircle2, TrendingUp } from 'lucide-react';
+import { Lightbulb, ChevronDown, ChevronUp, Clock, Plus, Minus, Trash2, CheckCircle2, TrendingUp } from 'lucide-react';
 import { sound } from '../utils/sound';
 
 interface ExerciseCardProps {
@@ -10,6 +10,7 @@ interface ExerciseCardProps {
   onToggleSet: (exerciseId: string, setId: string) => void;
   onStartRestTimer: (seconds: number, exerciseName: string) => void;
   onAddSet: (exerciseId: string) => void;
+  onDeleteSet: (exerciseId: string, setId: string) => void;
   onDeleteExercise: (exerciseId: string) => void;
   onOpenWeightHistory?: (exercise: Exercise) => void;
 }
@@ -21,6 +22,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onToggleSet,
   onStartRestTimer,
   onAddSet,
+  onDeleteSet,
   onDeleteExercise,
   onOpenWeightHistory
 }) => {
@@ -160,6 +162,21 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                       <span>Marcar</span>
                     )}
                   </button>
+
+                  {/* Remove specific Set Button */}
+                  {exercise.sets.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteSet(exercise.id, set.id);
+                      }}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-950/40 active:scale-95 transition-all"
+                      title={`Remover série ${set.setNumber}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -187,22 +204,34 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 
           {/* Quick Exercise Actions */}
           <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <button
                 onClick={() => onAddSet(exercise.id)}
-                className="flex items-center gap-1 hover:text-cyan-400 transition-colors"
+                className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 font-bold transition-colors"
+                title="Adicionar uma nova série a este exercício"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Adicionar Série</span>
               </button>
 
+              {exercise.sets.length > 1 && (
+                <button
+                  onClick={() => onDeleteSet(exercise.id, exercise.sets[exercise.sets.length - 1].id)}
+                  className="flex items-center gap-1 text-slate-400 hover:text-amber-400 transition-colors font-medium"
+                  title="Remover a última série deste exercício"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                  <span>Remover Série</span>
+                </button>
+              )}
+
               {onOpenWeightHistory && (
                 <button
                   onClick={() => onOpenWeightHistory(exercise)}
-                  className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 font-bold transition-colors"
+                  className="flex items-center gap-1 text-slate-300 hover:text-cyan-300 font-semibold transition-colors"
                 >
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  <span>Evolução de Carga</span>
+                  <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Evolução</span>
                 </button>
               )}
             </div>
@@ -212,7 +241,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               className="flex items-center gap-1 hover:text-red-400 transition-colors text-slate-500"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Remover</span>
+              <span>Remover Exercício</span>
             </button>
           </div>
         </div>
