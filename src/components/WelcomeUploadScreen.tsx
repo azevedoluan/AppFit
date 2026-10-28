@@ -93,7 +93,7 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
   };
 
   return (
-    <div className="px-4 py-6 space-y-6 animate-in fade-in duration-300">
+    <div className="px-4 pt-4 pb-32 space-y-6 animate-in fade-in duration-300">
       {/* Hero Welcome Card */}
       <div className="text-center space-y-2">
         <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-cyan-500 via-teal-400 to-emerald-400 p-0.5 mx-auto shadow-xl shadow-cyan-500/20">
@@ -118,18 +118,25 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
       )}
 
       {/* Main Action 1: Upload Image (Highlighted) */}
-      <div className="bg-gradient-to-b from-[#0f1b31] to-[#0a1322] border-2 border-cyan-500/50 rounded-3xl p-5 shadow-2xl shadow-cyan-950/50 relative overflow-hidden">
-        <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-[10px] font-extrabold uppercase text-cyan-300 tracking-wider">
-          Recomendado
+      <div className="bg-gradient-to-b from-[#0f1b31] to-[#0a1322] border-2 border-cyan-500/50 rounded-3xl p-5 shadow-2xl shadow-cyan-950/50">
+        {/* Header row with badge - completely separated from title to prevent any overlap on mobile */}
+        <div className="flex items-center justify-between gap-2 mb-3.5">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-[10px] font-extrabold uppercase text-cyan-300 tracking-wider">
+            <Sparkles className="w-3 h-3 text-cyan-400" />
+            Recomendado
+          </span>
+          <span className="text-[11px] font-medium text-cyan-400/80">
+            Leitura Automática
+          </span>
         </div>
 
         <div className="flex items-start gap-3.5 mb-4">
           <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0">
             <Camera className="w-6 h-6" />
           </div>
-          <div>
-            <h3 className="text-base font-extrabold text-white">Subir Foto da Ficha de Treino</h3>
-            <p className="text-xs text-slate-300 mt-0.5">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-extrabold text-white leading-snug">Subir Foto da Ficha de Treino</h3>
+            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
               Tire uma foto ou selecione a imagem do seu treino (ex: foto da planilha impressa).
             </p>
           </div>
@@ -223,10 +230,10 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
       </div>
 
       {/* Main Action 3: Manual Entry */}
-      <div className="text-center pt-2">
+      <div className="text-center pt-2 pb-6">
         <button
           onClick={onOpenManualModal}
-          className="text-xs font-semibold text-slate-400 hover:text-cyan-400 transition-colors py-1"
+          className="text-xs font-semibold text-slate-400 hover:text-cyan-300 transition-colors py-2 px-4 rounded-xl hover:bg-slate-900 border border-transparent hover:border-slate-800"
         >
           Ou cadastrar os exercícios manualmente no formulário &rarr;
         </button>
