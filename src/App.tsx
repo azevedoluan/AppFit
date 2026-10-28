@@ -739,19 +739,43 @@ export const App: React.FC = () => {
     updateAndSaveWorkouts(updated);
   };
 
+  const handleDeleteMultipleSets = (exerciseId: string, setIds: string[]) => {
+    const updated = workoutDays.map(day => {
+      if (day.id !== selectedDayId) return day;
+      return {
+        ...day,
+        exercises: day.exercises.map(ex => {
+          if (ex.id !== exerciseId) return ex;
+          const filtered = ex.sets.filter(s => !setIds.includes(s.id));
+          if (filtered.length === 0) return ex; // Mantém no mínimo 1 série
+
+          const renumbered = filtered.map((s, idx) => ({
+            ...s,
+            setNumber: idx + 1
+          }));
+
+          return {
+            ...ex,
+            seriesCount: renumbered.length,
+            sets: renumbered
+          };
+        })
+      };
+    });
+    updateAndSaveWorkouts(updated);
+  };
+
   const handleDeleteExercise = (exerciseId: string) => {
-    if (confirm('Tem certeza que deseja remover este exercício do treino?')) {
-      const updated = workoutDays.map(day => {
-        if (day.id !== selectedDayId) return day;
-        const filtered = day.exercises.filter(ex => ex.id !== exerciseId);
-        return {
-          ...day,
-          subtitle: `${filtered.length} exercícios planejados`,
-          exercises: filtered.map((ex, idx) => ({ ...ex, order: idx + 1 }))
-        };
-      });
-      updateAndSaveWorkouts(updated);
-    }
+    const updated = workoutDays.map(day => {
+      if (day.id !== selectedDayId) return day;
+      const filtered = day.exercises.filter(ex => ex.id !== exerciseId);
+      return {
+        ...day,
+        subtitle: `${filtered.length} exercícios planejados`,
+        exercises: filtered.map((ex, idx) => ({ ...ex, order: idx + 1 }))
+      };
+    });
+    updateAndSaveWorkouts(updated);
   };
 
   const handleImportWorkoutDays = (newDays: WorkoutDay[]) => {
@@ -848,6 +872,7 @@ export const App: React.FC = () => {
                 onStartRestTimer={handleStartRestTimer}
                 onAddSet={handleAddSet}
                 onDeleteSet={handleDeleteSet}
+                onDeleteMultipleSets={handleDeleteMultipleSets}
                 onDeleteExercise={handleDeleteExercise}
                 onOpenWeightHistory={(ex) => setSelectedExerciseForHistory(ex)}
               />
