@@ -120,13 +120,10 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
       {/* Main Action 1: Upload Image (Highlighted) */}
       <div className="bg-gradient-to-b from-[#0f1b31] to-[#0a1322] border-2 border-cyan-500/50 rounded-3xl p-5 shadow-2xl shadow-cyan-950/50">
         {/* Header row with badge - completely separated from title to prevent any overlap on mobile */}
-        <div className="flex items-center justify-between gap-2 mb-3.5">
+        <div className="flex items-center mb-3.5">
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-[10px] font-extrabold uppercase text-cyan-300 tracking-wider">
             <Sparkles className="w-3 h-3 text-cyan-400" />
             Recomendado
-          </span>
-          <span className="text-[11px] font-medium text-cyan-400/80">
-            Leitura Automática
           </span>
         </div>
 
