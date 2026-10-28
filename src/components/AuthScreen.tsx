@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mail, Lock, User as UserIcon, Eye, EyeOff, Sparkles, AlertCircle, CheckCircle2, ArrowRight, ShieldCheck, RefreshCw, Trash2 } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, Eye, EyeOff, Sparkles, AlertCircle, CheckCircle2, ArrowRight, ShieldCheck, RefreshCw, Trash2, Database } from 'lucide-react';
 import type { User } from '../types/auth';
+import { api } from '../services/api';
 import {
   loginAccount,
   startEmailVerification,
@@ -18,6 +19,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 }) => {
   const [viewState, setViewState] = useState<'auth' | 'verify'>('auth');
   const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [availableAccounts, setAvailableAccounts] = useState<User[]>([]);
+
+  // Carrega contas cadastradas diretamente no PostgreSQL
+  useEffect(() => {
+    api.getUsers().then(users => {
+      if (users && users.length > 0) {
+        setAvailableAccounts(users);
+      }
+    }).catch(() => {});
+  }, []);
 
   // Form State
   const [name, setName] = useState('');
@@ -396,6 +407,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             Cadastrar
           </button>
         </div>
+
+        {/* Detecção de Contas no PostgreSQL */}
+        {availableAccounts.length > 0 && (
+          <div className="mb-4 p-3 rounded-2xl bg-[#0a1424] border border-cyan-500/40 space-y-2.5 shadow-lg">
+            <div className="flex items-center gap-2 text-cyan-300 text-xs font-extrabold">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Conta Detectada no PostgreSQL:</span>
+            </div>
+            {availableAccounts.map((acc) => (
+              <button
+                key={acc.id}
+                type="button"
+                onClick={() => onLoginSuccess(acc)}
+                className="w-full p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-left flex items-center justify-between active:scale-95 transition-all group"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-300 font-black flex items-center justify-center text-xs shrink-0 border border-cyan-500/40">
+                    {acc.name ? acc.name.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors truncate">
+                      {acc.name}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">{acc.email}</div>
+                  </div>
+                </div>
+                <span className="text-[11px] font-extrabold text-cyan-300 px-3 py-1 rounded-lg bg-cyan-950/80 border border-cyan-500/40 shrink-0 group-hover:bg-cyan-500 group-hover:text-slate-950 transition-all">
+                  Entrar
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Real Google Account Link Button (no password requested) */}
         <button

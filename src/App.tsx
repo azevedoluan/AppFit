@@ -18,6 +18,7 @@ import { ExerciseWeightHistoryModal } from './components/ExerciseWeightHistoryMo
 import { Sparkles, FileSpreadsheet, Timer as TimerIcon, Calendar as CalendarIcon, BellRing, AlertTriangle, RotateCcw } from 'lucide-react';
 import { sound } from './utils/sound';
 import { wipeAllUsersDatabase } from './utils/authStorage';
+import { api } from './services/api';
 import {
   loadUserWorkouts,
   saveUserWorkouts,
@@ -29,6 +30,7 @@ import {
   saveUserAvatar,
   clearUserWorkouts,
   loadUserWorkoutHistory,
+  saveUserWorkoutHistory,
   addUserWorkoutHistoryRecord
 } from './utils/userWorkoutStorage';
 
@@ -176,7 +178,12 @@ export const App: React.FC = () => {
   const timerIntervalRef = useRef<number | null>(null);
   const workoutStopwatchIntervalRef = useRef<number | null>(null);
 
-  // Whenever currentUser changes, load that user's specific data
+  // PostgreSQL Connection & Real-Time Sync State
+  const [isDbConnected, setIsDbConnected] = useState<boolean>(true);
+  const lastSyncVersionRef = useRef<number>(0);
+  const isSyncingFromRemoteRef = useRef<boolean>(false);
+
+  // Whenever currentUser changes, load data locally then synchronize with PostgreSQL
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('appfit_current_session_user', JSON.stringify(currentUser));
@@ -186,6 +193,7 @@ export const App: React.FC = () => {
       const userAvatar = currentUser.avatarUrl || loadUserAvatar(currentUser.id);
       const userHistory = loadUserWorkoutHistory(currentUser.id);
 
+      // Instant local cache display
       setWorkoutDays(userWorkouts);
       setCycle(userCycle);
       setUserName(currentUser.name);
@@ -200,6 +208,56 @@ export const App: React.FC = () => {
       } else {
         setSelectedDayId('');
       }
+
+      // Sincronização direta com PostgreSQL
+      const syncWithPostgres = async () => {
+        try {
+          // 1. Sincroniza usuário e recupera ID canônico do banco
+          const canonical = await api.syncUser(currentUser);
+          if (canonical && canonical.id !== currentUser.id) {
+            setCurrentUser(canonical);
+            return;
+          }
+
+          // 2. Busca treinos persistidos no PostgreSQL
+          const remote = await api.getWorkouts(currentUser.id);
+          if (remote && remote.workoutDays && remote.workoutDays.length > 0) {
+            isSyncingFromRemoteRef.current = true;
+            setWorkoutDays(remote.workoutDays);
+            saveUserWorkouts(currentUser.id, remote.workoutDays);
+            if (remote.cycle) {
+              setCycle(remote.cycle);
+              saveUserCycle(currentUser.id, remote.cycle);
+            }
+            const validDay = remote.workoutDays.some(d => d.id === userSelectedDay)
+              ? userSelectedDay
+              : remote.workoutDays[0].id;
+            setSelectedDayId(validDay);
+            isSyncingFromRemoteRef.current = false;
+          } else if (userWorkouts && userWorkouts.length > 0) {
+            // Se o PostgreSQL ainda não tiver a ficha deste usuário, sobe os treinos locais
+            await api.saveWorkouts(currentUser.id, userWorkouts, userCycle);
+          }
+
+          // 3. Busca histórico de sessões finalizadas
+          const remoteSessions = await api.getSessions(currentUser.id);
+          if (remoteSessions && remoteSessions.length > 0) {
+            setWorkoutHistory(remoteSessions);
+            saveUserWorkoutHistory(currentUser.id, remoteSessions);
+          }
+
+          // 4. Salva versão de sincronização
+          const v = await api.getSyncVersion(currentUser.id);
+          if (v) {
+            lastSyncVersionRef.current = v.version;
+          }
+          setIsDbConnected(true);
+        } catch (err) {
+          console.warn('[PostgreSQL Sync] Erro na sincronização inicial:', err);
+        }
+      };
+
+      syncWithPostgres();
     } else {
       localStorage.removeItem('appfit_current_session_user');
       setWorkoutDays([]);
@@ -208,6 +266,63 @@ export const App: React.FC = () => {
       setAvatarUrl(undefined);
       setWorkoutHistory([]);
     }
+  }, [currentUser]);
+
+  // Polling em tempo real para sincronização entre dispositivos (Celular <-> Computador)
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const pollSync = async () => {
+      try {
+        const v = await api.getSyncVersion(currentUser.id);
+        if (!v) {
+          setIsDbConnected(false);
+          return;
+        }
+        setIsDbConnected(true);
+
+        // Se outro dispositivo (celular ou PC) atualizou dados no PostgreSQL
+        if (v.version > lastSyncVersionRef.current) {
+          lastSyncVersionRef.current = v.version;
+          const remote = await api.getWorkouts(currentUser.id);
+          if (remote && remote.workoutDays) {
+            isSyncingFromRemoteRef.current = true;
+            setWorkoutDays(remote.workoutDays);
+            saveUserWorkouts(currentUser.id, remote.workoutDays);
+            if (remote.cycle) {
+              setCycle(remote.cycle);
+              saveUserCycle(currentUser.id, remote.cycle);
+            }
+            isSyncingFromRemoteRef.current = false;
+          }
+
+          const remoteSessions = await api.getSessions(currentUser.id);
+          if (remoteSessions) {
+            setWorkoutHistory(remoteSessions);
+            saveUserWorkoutHistory(currentUser.id, remoteSessions);
+          }
+        }
+      } catch (err) {
+        console.warn('[Sync Poll] Erro no polling:', err);
+      }
+    };
+
+    const interval = window.setInterval(pollSync, 2000);
+
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        pollSync();
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisible);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
+    };
   }, [currentUser]);
 
   // Workout Stopwatch Interval baseado em Timestamp (não congela com tela bloqueada)
@@ -324,6 +439,9 @@ export const App: React.FC = () => {
     setWorkoutDays(newDays);
     if (currentUser) {
       saveUserWorkouts(currentUser.id, newDays);
+      if (!isSyncingFromRemoteRef.current) {
+        api.saveWorkouts(currentUser.id, newDays, cycle);
+      }
     }
   };
 
@@ -332,6 +450,9 @@ export const App: React.FC = () => {
     setCycle(newCycle);
     if (currentUser) {
       saveUserCycle(currentUser.id, newCycle);
+      if (!isSyncingFromRemoteRef.current) {
+        api.saveWorkouts(currentUser.id, workoutDays, newCycle);
+      }
     }
   };
 
@@ -496,6 +617,9 @@ export const App: React.FC = () => {
     setIsCompletionModalOpen(false);
     setPendingCompletionRecord(null);
 
+    // Salva sessão no PostgreSQL
+    api.saveSession(finalRecord, currentUser.id);
+
     // Quando encerra o treino, zera todos os exercícios da ficha para "não feito", preservando rigorosamente as cargas e salvando no histórico de evolução
     const updated = workoutDays.map(day => {
       if (day.id !== record.workoutDayId) return day;
@@ -536,6 +660,7 @@ export const App: React.FC = () => {
   const handleToggleSet = (exerciseId: string, setId: string) => {
     let exerciseName = '';
     let becameCompleted = false;
+    let willBeCompleted = false;
 
     const updated = workoutDays.map(day => {
       if (day.id !== selectedDayId) return day;
@@ -548,7 +673,7 @@ export const App: React.FC = () => {
             ...ex,
             sets: ex.sets.map(set => {
               if (set.id !== setId) return set;
-              const willBeCompleted = !set.completed;
+              willBeCompleted = !set.completed;
               if (willBeCompleted) becameCompleted = true;
               return { ...set, completed: willBeCompleted };
             })
@@ -558,6 +683,11 @@ export const App: React.FC = () => {
     });
 
     updateAndSaveWorkouts(updated);
+
+    // Sincroniza marcação da série no PostgreSQL
+    if (currentUser) {
+      api.updateSet(currentUser.id, exerciseId, setId, willBeCompleted, undefined);
+    }
 
     // Check if the workout just finished (all sets marked completed)
     const activeDay = updated.find(d => d.id === selectedDayId);
@@ -599,6 +729,11 @@ export const App: React.FC = () => {
       };
     });
     updateAndSaveWorkouts(updated);
+
+    // Sincroniza carga no PostgreSQL
+    if (currentUser) {
+      api.updateSet(currentUser.id, exerciseId, setId, undefined, weight);
+    }
   };
 
   const handleToggleExpand = (exerciseId: string) => {
@@ -652,6 +787,11 @@ export const App: React.FC = () => {
       updateAndSaveWorkouts(updated);
       setIsWorkoutActive(false);
       setWorkoutElapsedSeconds(0);
+
+      // Zera marcações no PostgreSQL
+      if (currentUser) {
+        api.resetDayProgress(currentUser.id, selectedDayId);
+      }
     }
   };
 
@@ -687,6 +827,7 @@ export const App: React.FC = () => {
   };
 
   const handleAddSet = (exerciseId: string) => {
+    let createdSet: any = null;
     const updated = workoutDays.map(day => {
       if (day.id !== selectedDayId) return day;
       return {
@@ -702,6 +843,7 @@ export const App: React.FC = () => {
             weight: lastSet?.weight || 0,
             completed: false
           };
+          createdSet = newSet;
           return {
             ...ex,
             seriesCount: newSetNumber,
@@ -711,6 +853,10 @@ export const App: React.FC = () => {
       };
     });
     updateAndSaveWorkouts(updated);
+
+    if (currentUser && createdSet) {
+      api.addSet(currentUser.id, exerciseId, createdSet);
+    }
   };
 
   const handleDeleteSet = (exerciseId: string, setId: string) => {
@@ -737,6 +883,10 @@ export const App: React.FC = () => {
       };
     });
     updateAndSaveWorkouts(updated);
+
+    if (currentUser) {
+      api.deleteSets(currentUser.id, exerciseId, [setId]);
+    }
   };
 
   const handleDeleteMultipleSets = (exerciseId: string, setIds: string[]) => {
@@ -763,6 +913,10 @@ export const App: React.FC = () => {
       };
     });
     updateAndSaveWorkouts(updated);
+
+    if (currentUser) {
+      api.deleteSets(currentUser.id, exerciseId, setIds);
+    }
   };
 
   const handleDeleteExercise = (exerciseId: string) => {
@@ -776,6 +930,10 @@ export const App: React.FC = () => {
       };
     });
     updateAndSaveWorkouts(updated);
+
+    if (currentUser) {
+      api.deleteExercise(currentUser.id, exerciseId, selectedDayId);
+    }
   };
 
   const handleImportWorkoutDays = (newDays: WorkoutDay[]) => {
@@ -789,6 +947,7 @@ export const App: React.FC = () => {
     if (confirm('Tem certeza que deseja zerar todos os seus treinos atuais para subir um novo?')) {
       if (currentUser) {
         clearUserWorkouts(currentUser.id);
+        api.clearAllWorkouts(currentUser.id);
       }
       setWorkoutDays([]);
       setSelectedDayId('');
@@ -834,6 +993,7 @@ export const App: React.FC = () => {
         onOpenCalendar={() => setIsHistoryModalOpen(true)}
         isInstallable={!!deferredPrompt}
         hasWorkouts={hasWorkouts}
+        isDbConnected={isDbConnected}
       />
 
       {/* Se o usuário já tiver treinos ativos, mostra os dias da semana e os exercícios */}
