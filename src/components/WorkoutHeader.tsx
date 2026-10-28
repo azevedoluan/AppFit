@@ -64,10 +64,10 @@ export const WorkoutHeader: React.FC<WorkoutHeaderProps> = ({
         </div>
       </div>
 
-      {/* Main Title (e.g. "Hoje (Sexta) — Inferiores A") */}
+      {/* Main Title (apenas o nome do treino) */}
       <div>
         <h2 className="text-xl font-extrabold text-white tracking-tight leading-tight">
-          Hoje ({workoutDay.dayName}) — {workoutDay.title}
+          {workoutDay.title}
         </h2>
         <p className="text-xs text-slate-400 mt-0.5 font-medium">
           {workoutDay.subtitle}

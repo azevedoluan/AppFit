@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { Camera, FileSpreadsheet, Upload, Sparkles, CheckCircle2, AlertCircle, Eye, ArrowRight, Dumbbell } from 'lucide-react';
+import { Camera, FileSpreadsheet, Upload, Sparkles, CheckCircle2, AlertCircle, Eye, ArrowRight, Dumbbell, Calendar, Layers } from 'lucide-react';
 import type { WorkoutDay } from '../types/workout';
-import { parseSpreadsheet, parsePlainTextPlan } from '../utils/importUtils';
+import { parseSpreadsheet, parsePlainTextPlan, convertToAlphabeticalDivision, convertToWeeklyDivision } from '../utils/importUtils';
 import { initialWorkouts } from '../data/initialWorkouts';
 
 interface WelcomeUploadScreenProps {
@@ -18,8 +18,19 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [scannedDays, setScannedDays] = useState<WorkoutDay[] | null>(null);
+  const [distributionMode, setDistributionMode] = useState<'weekly' | 'alphabetical'>('weekly');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+
+  const handleToggleDistribution = (mode: 'weekly' | 'alphabetical') => {
+    if (!scannedDays) return;
+    setDistributionMode(mode);
+    if (mode === 'alphabetical') {
+      setScannedDays(convertToAlphabeticalDivision(scannedDays));
+    } else {
+      setScannedDays(convertToWeeklyDivision(scannedDays));
+    }
+  };
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const sheetInputRef = useRef<HTMLInputElement>(null);
@@ -252,7 +263,40 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
               </div>
             </div>
 
-            <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+            {/* Distribuição do Programa de Treino: Dias da Semana vs Treinos A, B, C */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-300 block">
+                Como deseja organizar este programa?
+              </label>
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => handleToggleDistribution('weekly')}
+                  className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    distributionMode === 'weekly'
+                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-md shadow-teal-500/20'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  Dias da Semana
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleDistribution('alphabetical')}
+                  className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    distributionMode === 'alphabetical'
+                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-md shadow-teal-500/20'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  Treinos A, B, C...
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
               {scannedDays.map((day) => (
                 <div key={day.id} className="p-3 rounded-2xl bg-slate-900 border border-slate-800 text-xs">
                   <div className="flex items-center justify-between mb-1">

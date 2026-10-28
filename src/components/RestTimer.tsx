@@ -67,26 +67,36 @@ export const RestTimer: React.FC<RestTimerProps> = ({
           />
         </div>
 
-        {/* Quick controls */}
-        <div className="flex items-center justify-between text-xs pt-1">
+        {/* Quick controls: Opções de postergar descanso ou iniciar série */}
+        <div className="flex items-center justify-between gap-1 text-xs pt-1 flex-wrap">
           <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-slate-400 font-semibold mr-0.5">Postergar:</span>
             <button
-              onClick={() => onAdjustTime(-15)}
-              className="px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold active:scale-95 transition-all flex items-center gap-0.5"
+              onClick={() => onAdjustTime(30)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-cyan-300 border border-slate-700/60 font-bold active:scale-95 transition-all flex items-center gap-0.5 text-[11px]"
+              title="Postergar mais 30 segundos"
             >
-              <Minus className="w-3 h-3" /> 15s
+              <Plus className="w-3 h-3" /> 30s
             </button>
             <button
-              onClick={() => onAdjustTime(15)}
-              className="px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold active:scale-95 transition-all flex items-center gap-0.5"
+              onClick={() => onAdjustTime(60)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-cyan-300 border border-slate-700/60 font-bold active:scale-95 transition-all flex items-center gap-0.5 text-[11px]"
+              title="Postergar mais 1 minuto"
             >
-              <Plus className="w-3 h-3" /> 15s
+              <Plus className="w-3 h-3" /> 1 min
+            </button>
+            <button
+              onClick={() => onAdjustTime(-15)}
+              className="px-2 py-1 rounded-lg bg-slate-800/60 hover:bg-slate-700 text-slate-400 font-bold active:scale-95 transition-all flex items-center gap-0.5 text-[11px]"
+              title="Adiantar 15 segundos"
+            >
+              <Minus className="w-3 h-3" /> 15s
             </button>
           </div>
 
           <button
             onClick={onClose}
-            className="px-3 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-bold active:scale-95 transition-all"
+            className="ml-auto px-3 py-1.5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white font-extrabold text-[11px] shadow-md shadow-teal-500/20 active:scale-95 transition-all"
           >
             Pronto para Série
           </button>

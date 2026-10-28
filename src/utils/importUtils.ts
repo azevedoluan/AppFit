@@ -1,15 +1,76 @@
 import * as XLSX from 'xlsx';
 import type { WorkoutDay, Exercise, ExerciseSet, DayCode } from '../types/workout';
 
-export function parseDayCode(header: string): { code: DayCode; name: string } {
+export function parseDayCode(header: string): { code: DayCode; name: string; isAlphabetical: boolean } {
   const upper = header.toUpperCase();
-  if (upper.includes('SEG')) return { code: 'SEG', name: 'Segunda' };
-  if (upper.includes('TER')) return { code: 'TER', name: 'Terça' };
-  if (upper.includes('QUA')) return { code: 'QUA', name: 'Quarta' };
-  if (upper.includes('QUI')) return { code: 'QUI', name: 'Quinta' };
-  if (upper.includes('SEX')) return { code: 'SEX', name: 'Sexta' };
-  if (upper.includes('SAB') || upper.includes('SÁB')) return { code: 'SAB', name: 'Sábado' };
-  return { code: 'DOM', name: 'Domingo' };
+
+  // Check letter division (Treino A, Treino B, Ficha C, etc.)
+  const treinoMatch = upper.match(/(?:TREINO|FICHA)\s+([A-Z])/i);
+  if (treinoMatch) {
+    const letter = treinoMatch[1].toUpperCase();
+    return { code: letter, name: `Treino ${letter}`, isAlphabetical: true };
+  }
+  const singleLetterMatch = upper.match(/^([A-Z])\s*[—–-]/i);
+  if (singleLetterMatch) {
+    const letter = singleLetterMatch[1].toUpperCase();
+    return { code: letter, name: `Treino ${letter}`, isAlphabetical: true };
+  }
+
+  // Week days
+  if (upper.includes('SEG')) return { code: 'SEG', name: 'Segunda', isAlphabetical: false };
+  if (upper.includes('TER')) return { code: 'TER', name: 'Terça', isAlphabetical: false };
+  if (upper.includes('QUA')) return { code: 'QUA', name: 'Quarta', isAlphabetical: false };
+  if (upper.includes('QUI')) return { code: 'QUI', name: 'Quinta', isAlphabetical: false };
+  if (upper.includes('SEX')) return { code: 'SEX', name: 'Sexta', isAlphabetical: false };
+  if (upper.includes('SAB') || upper.includes('SÁB')) return { code: 'SAB', name: 'Sábado', isAlphabetical: false };
+  if (upper.includes('DOM')) return { code: 'DOM', name: 'Domingo', isAlphabetical: false };
+
+  return { code: 'SEG', name: 'Segunda', isAlphabetical: false };
+}
+
+export function convertToAlphabeticalDivision(days: WorkoutDay[]): WorkoutDay[] {
+  const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+  return days.map((day, idx) => {
+    const letter = letters[idx % letters.length];
+    const cleanTitle = day.title
+      .replace(/^(Hoje|Segunda|Terça|Quarta|Quinta|Sexta|Sábado|Domingo|\(|\)|•|—|-|\s)+/i, '')
+      .replace(/^Treino\s+[A-Z]\s*[-—–]*\s*/i, '')
+      .trim() || `Treino ${letter}`;
+    return {
+      ...day,
+      dayCode: letter,
+      dayName: `Treino ${letter}`,
+      title: cleanTitle.toLowerCase().startsWith('treino') ? cleanTitle : `Treino ${letter} — ${cleanTitle}`,
+      shortLabel: `Treino ${letter}`,
+      categoryBadge: `TREINO ${letter}`,
+      divisionType: 'alphabetical'
+    };
+  });
+}
+
+export function convertToWeeklyDivision(days: WorkoutDay[]): WorkoutDay[] {
+  const weekDays = [
+    { code: 'SEG', name: 'Segunda' },
+    { code: 'TER', name: 'Terça' },
+    { code: 'QUA', name: 'Quarta' },
+    { code: 'QUI', name: 'Quinta' },
+    { code: 'SEX', name: 'Sexta' },
+    { code: 'SAB', name: 'Sábado' },
+    { code: 'DOM', name: 'Domingo' }
+  ];
+  return days.map((day, idx) => {
+    const week = weekDays[idx % weekDays.length];
+    const cleanTitle = day.title.replace(/^Treino\s+[A-Z]\s*[-—–]*\s*/i, '').trim() || day.title;
+    return {
+      ...day,
+      dayCode: week.code,
+      dayName: week.name,
+      title: cleanTitle,
+      shortLabel: cleanTitle.slice(0, 8),
+      categoryBadge: `${week.name.toUpperCase()} • ${cleanTitle.toUpperCase()}`,
+      divisionType: 'weekly'
+    };
+  });
 }
 
 function detectCategory(name: string): string {
@@ -60,8 +121,8 @@ export function parseSpreadsheet(data: ArrayBuffer): WorkoutDay[] {
     const firstCell = String(row[0] || '').trim();
     if (!firstCell) continue;
 
-    // Check if row is a Day Header (e.g. "SEGUNDA — SUPERIORES A", "TERÇA — INFERIORES A")
-    const isDayHeader = /^(SEGUNDA|TERÇA|TERCA|QUARTA|QUINTA|SEXTA|SÁBADO|SABADO|DOMINGO)/i.test(firstCell);
+    // Check if row is a Day / Workout Header (e.g. "SEGUNDA — SUPERIORES A", "TREINO A — PEITO", "FICHA B")
+    const isDayHeader = /^(SEGUNDA|TERÇA|TERCA|QUARTA|QUINTA|SEXTA|SÁBADO|SABADO|DOMINGO|TREINO\s+[A-Z]|FICHA\s+[A-Z]|[A-Z]\s*[—–-])/i.test(firstCell);
 
     if (isDayHeader) {
       if (currentDay && currentDay.exercises.length > 0) {
@@ -69,7 +130,7 @@ export function parseSpreadsheet(data: ArrayBuffer): WorkoutDay[] {
         parsedDays.push(currentDay);
       }
 
-      const { code, name } = parseDayCode(firstCell);
+      const { code, name, isAlphabetical } = parseDayCode(firstCell);
       const splitHeader = firstCell.split(/[—–-]/);
       const title = splitHeader.length > 1 ? splitHeader.slice(1).join(' - ').trim() : firstCell;
 
@@ -78,10 +139,11 @@ export function parseSpreadsheet(data: ArrayBuffer): WorkoutDay[] {
         dayCode: code,
         dayName: name,
         title: title || `${name}`,
-        shortLabel: title.slice(0, 8),
+        shortLabel: isAlphabetical ? `Treino ${code}` : title.slice(0, 8),
         categoryBadge: title.toUpperCase(),
         subtitle: 'Carregando exercícios...',
-        exercises: []
+        exercises: [],
+        divisionType: isAlphabetical ? 'alphabetical' : 'weekly'
       };
       order = 1;
       continue;
@@ -135,7 +197,7 @@ export function parsePlainTextPlan(text: string): WorkoutDay[] {
   let order = 1;
 
   for (const line of lines) {
-    const isDayHeader = /^(SEGUNDA|TERÇA|TERCA|QUARTA|QUINTA|SEXTA|SÁBADO|SABADO|DOMINGO)/i.test(line);
+    const isDayHeader = /^(SEGUNDA|TERÇA|TERCA|QUARTA|QUINTA|SEXTA|SÁBADO|SABADO|DOMINGO|TREINO\s+[A-Z]|FICHA\s+[A-Z]|[A-Z]\s*[—–-])/i.test(line);
 
     if (isDayHeader) {
       if (currentDay && currentDay.exercises.length > 0) {
@@ -143,7 +205,7 @@ export function parsePlainTextPlan(text: string): WorkoutDay[] {
         parsedDays.push(currentDay);
       }
 
-      const { code, name } = parseDayCode(line);
+      const { code, name, isAlphabetical } = parseDayCode(line);
       const splitHeader = line.split(/[—–-]/);
       const title = splitHeader.length > 1 ? splitHeader.slice(1).join(' - ').trim() : line;
 
@@ -152,10 +214,11 @@ export function parsePlainTextPlan(text: string): WorkoutDay[] {
         dayCode: code,
         dayName: name,
         title: title || name,
-        shortLabel: title.slice(0, 8),
+        shortLabel: isAlphabetical ? `Treino ${code}` : title.slice(0, 8),
         categoryBadge: title.toUpperCase(),
         subtitle: 'Exercícios importados',
-        exercises: []
+        exercises: [],
+        divisionType: isAlphabetical ? 'alphabetical' : 'weekly'
       };
       order = 1;
       continue;

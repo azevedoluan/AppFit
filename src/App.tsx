@@ -14,7 +14,7 @@ import { PWAInstallModal } from './components/PWAInstallModal';
 import { WelcomeUploadScreen } from './components/WelcomeUploadScreen';
 import { WorkoutCompletionModal } from './components/WorkoutCompletionModal';
 import { WorkoutHistoryCalendarModal } from './components/WorkoutHistoryCalendarModal';
-import { Sparkles, FileSpreadsheet, Timer as TimerIcon, Calendar as CalendarIcon } from 'lucide-react';
+import { Sparkles, FileSpreadsheet, Timer as TimerIcon, Calendar as CalendarIcon, BellRing } from 'lucide-react';
 import { sound } from './utils/sound';
 import { wipeAllUsersDatabase } from './utils/authStorage';
 import {
@@ -86,6 +86,35 @@ export const App: React.FC = () => {
     totalDuration: 0
   });
 
+  const [restFinishedNotice, setRestFinishedNotice] = useState<string | null>(null);
+
+  // Auto-dismiss da notificação visual de fim do descanso após 6 segundos
+  useEffect(() => {
+    if (restFinishedNotice) {
+      const timer = window.setTimeout(() => {
+        setRestFinishedNotice(null);
+      }, 6000);
+      return () => window.clearTimeout(timer);
+    }
+  }, [restFinishedNotice]);
+
+  const triggerRestFinishedNotice = (exerciseName?: string) => {
+    // 1. Notificação nativa do sistema operacional (se permitida)
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('AppFit • Fim do Descanso!', {
+          body: exerciseName ? `Descanso finalizado! Hora da próxima série de ${exerciseName}.` : 'Descanso finalizado! Hora da próxima série!',
+          icon: '/manifest-icon-192.png'
+        });
+      }
+    } catch {
+      // Ignora erro de permissão
+    }
+
+    // 2. Notificação visual in-app em destaque
+    setRestFinishedNotice(exerciseName || 'Recuperação');
+  };
+
   const timerIntervalRef = useRef<number | null>(null);
   const workoutStopwatchIntervalRef = useRef<number | null>(null);
 
@@ -148,6 +177,7 @@ export const App: React.FC = () => {
         setRestTimer((prev) => {
           if (prev.secondsRemaining <= 1) {
             sound.playTimerCompleteSound();
+            triggerRestFinishedNotice(prev.exerciseName);
             return { ...prev, isActive: false, secondsRemaining: 0 };
           }
           if (prev.secondsRemaining <= 4) {
@@ -287,17 +317,23 @@ export const App: React.FC = () => {
 
   // Exercise and Sets Handlers
   const handleToggleSet = (exerciseId: string, setId: string) => {
+    let exerciseName = '';
+    let becameCompleted = false;
+
     const updated = workoutDays.map(day => {
       if (day.id !== selectedDayId) return day;
       return {
         ...day,
         exercises: day.exercises.map(ex => {
           if (ex.id !== exerciseId) return ex;
+          exerciseName = ex.name;
           return {
             ...ex,
             sets: ex.sets.map(set => {
               if (set.id !== setId) return set;
-              return { ...set, completed: !set.completed };
+              const willBeCompleted = !set.completed;
+              if (willBeCompleted) becameCompleted = true;
+              return { ...set, completed: willBeCompleted };
             })
           };
         })
@@ -312,6 +348,18 @@ export const App: React.FC = () => {
       const allSets = activeDay.exercises.flatMap(e => e.sets);
       if (allSets.length > 0 && allSets.every(s => s.completed)) {
         finishWorkoutSession(updated);
+        return;
+      }
+    }
+
+    // Toda vez que for marcado um exercício como concluído, inicie uma contagem automática de 1min de descanso
+    if (becameCompleted) {
+      sound.playCheckSound();
+      handleStartRestTimer(60, exerciseName || 'Descanso entre séries');
+
+      // Solicita permissão de notificação para avisar quando o descanso terminar
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
       }
     }
   };
@@ -559,37 +607,53 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Floating Action Button / Quick Bar */}
+      {/* Floating Action Bar (sem o botão do Gemini) */}
       <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
-        <div className="max-w-lg mx-auto px-4 pb-4 flex items-center justify-between pointer-events-auto">
+        <div className="max-w-md mx-auto px-6 pb-4 flex items-center justify-between pointer-events-auto">
           {/* Quick Import Button */}
           <button
             onClick={() => setIsImportModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-[#0e172a]/90 backdrop-blur-md border border-slate-700/80 text-cyan-300 text-xs font-bold shadow-xl hover:bg-slate-800 active:scale-95 transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#0e172a]/95 backdrop-blur-md border border-slate-700/80 text-cyan-300 text-xs font-bold shadow-xl hover:bg-slate-800 active:scale-95 transition-all"
           >
             <FileSpreadsheet className="w-4 h-4 text-cyan-400" />
             <span>Ficha / Imagem</span>
           </button>
 
-          {/* Central Sparkle Action Button */}
-          <button
-            onClick={() => handleStartRestTimer(60, 'Descanso Rápido')}
-            className="w-14 h-14 rounded-full bg-gradient-to-tr from-cyan-500 via-teal-400 to-emerald-400 text-slate-950 flex items-center justify-center shadow-xl shadow-cyan-500/40 hover:scale-105 active:scale-95 transition-transform border-4 border-[#060a12]"
-            title="Temporizador de Descanso"
-          >
-            <Sparkles className="w-7 h-7 fill-slate-950" />
-          </button>
-
           {/* Quick Calendar / History Button */}
           <button
             onClick={() => setIsHistoryModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-[#0e172a]/90 backdrop-blur-md border border-slate-700/80 text-slate-200 text-xs font-bold shadow-xl hover:bg-slate-800 active:scale-95 transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#0e172a]/95 backdrop-blur-md border border-slate-700/80 text-slate-200 text-xs font-bold shadow-xl hover:bg-slate-800 active:scale-95 transition-all"
           >
             <CalendarIcon className="w-4 h-4 text-teal-400" />
             <span>Histórico</span>
           </button>
         </div>
       </div>
+
+      {/* Notificação Visual e Sonora: Fim do Descanso */}
+      {restFinishedNotice && (
+        <div className="fixed top-4 left-4 right-4 z-50 max-w-md mx-auto animate-in slide-in-from-top-4 duration-300">
+          <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl p-4 shadow-2xl shadow-emerald-950/80 border-2 border-emerald-400 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <BellRing className="w-5 h-5 animate-bounce text-white" />
+              </div>
+              <div>
+                <h4 className="font-black text-sm uppercase tracking-wide">Fim do Descanso!</h4>
+                <p className="text-xs text-emerald-100 font-medium">
+                  {restFinishedNotice ? `Próxima série de ${restFinishedNotice}` : 'Hora de iniciar a próxima série!'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setRestFinishedNotice(null)}
+              className="px-3.5 py-1.5 rounded-xl bg-white text-emerald-900 font-extrabold text-xs shadow-md active:scale-95 transition-all shrink-0"
+            >
+              OK, Bora!
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Active Rest Timer Floating Banner */}
       {restTimer.isActive && (

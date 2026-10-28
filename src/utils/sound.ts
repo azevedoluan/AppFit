@@ -45,36 +45,40 @@ class SoundService {
     }
   }
 
-  // Timer complete alert sound (triad chime)
+  // Timer complete alert sound (crisp multi-beep chime + phone vibration)
   playTimerCompleteSound() {
     try {
       this.initContext();
       if (!this.audioCtx) return;
 
-      const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
-      notes.forEach((freq, idx) => {
+      const now = this.audioCtx.currentTime;
+      // Três bips enérgicos tipo cronômetro esportivo
+      const beeps = [
+        { freq: 880, start: 0.0, duration: 0.15 },
+        { freq: 880, start: 0.22, duration: 0.15 },
+        { freq: 1174.66, start: 0.44, duration: 0.35 }
+      ];
+
+      beeps.forEach(({ freq, start, duration }) => {
         if (!this.audioCtx) return;
         const osc = this.audioCtx.createOscillator();
         const gain = this.audioCtx.createGain();
 
-        const startTime = this.audioCtx.currentTime + idx * 0.12;
-        const endTime = startTime + 0.25;
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + start);
 
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, startTime);
-
-        gain.gain.setValueAtTime(0.2, startTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, endTime);
+        gain.gain.setValueAtTime(0.3, now + start);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
 
         osc.connect(gain);
         gain.connect(this.audioCtx.destination);
 
-        osc.start(startTime);
-        osc.stop(endTime);
+        osc.start(now + start);
+        osc.stop(now + start + duration);
       });
 
       if ('vibrate' in navigator) {
-        navigator.vibrate([100, 50, 150, 50, 200]);
+        navigator.vibrate([200, 100, 200, 100, 400]);
       }
     } catch {
       // Ignore

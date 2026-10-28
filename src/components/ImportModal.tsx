@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { X, FileSpreadsheet, Image as ImageIcon, Plus, CheckCircle, AlertCircle, Sparkles, UploadCloud } from 'lucide-react';
+import { X, FileSpreadsheet, Image as ImageIcon, Plus, CheckCircle, AlertCircle, Sparkles, UploadCloud, Calendar, Layers } from 'lucide-react';
 import type { WorkoutDay } from '../types/workout';
-import { parseSpreadsheet, parsePlainTextPlan } from '../utils/importUtils';
+import { parseSpreadsheet, parsePlainTextPlan, convertToAlphabeticalDivision, convertToWeeklyDivision } from '../utils/importUtils';
 
 interface ImportModalProps {
   isOpen: boolean;
@@ -23,6 +23,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Manual Form State
+  const [manualDivisionMode, setManualDivisionMode] = useState<'weekly' | 'alphabetical'>('weekly');
   const [manualDay, setManualDay] = useState('SEG');
   const [manualTitle, setManualTitle] = useState('Superiores A');
   const [manualExerciseName, setManualExerciseName] = useState('');
@@ -119,15 +120,25 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       return;
     }
 
-    const dayNameMap: Record<string, string> = {
-      SEG: 'Segunda',
-      TER: 'Terça',
-      QUA: 'Quarta',
-      QUI: 'Quinta',
-      SEX: 'Sexta',
-      SAB: 'Sábado',
-      DOM: 'Domingo'
-    };
+    const isAlpha = manualDivisionMode === 'alphabetical';
+    const dayNameMap: Record<string, string> = isAlpha
+      ? {
+          A: 'Treino A',
+          B: 'Treino B',
+          C: 'Treino C',
+          D: 'Treino D',
+          E: 'Treino E',
+          F: 'Treino F'
+        }
+      : {
+          SEG: 'Segunda',
+          TER: 'Terça',
+          QUA: 'Quarta',
+          QUI: 'Quinta',
+          SEX: 'Sexta',
+          SAB: 'Sábado',
+          DOM: 'Domingo'
+        };
 
     const newExercise = {
       id: `man-ex-${Date.now()}`,
@@ -157,22 +168,24 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       updated[existingDayIdx].subtitle = `${updated[existingDayIdx].exercises.length} exercícios planejados`;
       setPreviewDays(updated);
     } else {
+      const dayDisplayName = dayNameMap[manualDay] || (isAlpha ? `Treino ${manualDay}` : 'Segunda');
       const newDay: WorkoutDay = {
         id: `man-day-${manualDay.toLowerCase()}-${Date.now()}`,
         dayCode: manualDay as any,
-        dayName: dayNameMap[manualDay] || 'Segunda',
-        title: manualTitle,
-        shortLabel: manualTitle.slice(0, 8),
-        categoryBadge: manualTitle.toUpperCase(),
+        dayName: dayDisplayName,
+        title: manualTitle || dayDisplayName,
+        shortLabel: isAlpha ? `Treino ${manualDay}` : manualTitle.slice(0, 8),
+        categoryBadge: isAlpha ? `TREINO ${manualDay}` : manualTitle.toUpperCase(),
         subtitle: '1 exercício planejado',
-        exercises: [newExercise]
+        exercises: [newExercise],
+        divisionType: manualDivisionMode
       };
       setPreviewDays([...previewDays, newDay]);
     }
 
     setManualExerciseName('');
     setManualOrientation('');
-    setSuccessMessage(`Exercício adicionado ao dia ${manualDay}!`);
+    setSuccessMessage(`Exercício adicionado a ${isAlpha ? `Treino ${manualDay}` : manualDay}!`);
   };
 
   return (
@@ -331,22 +344,83 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         {/* Tab 3: Manual Input */}
         {activeTab === 'manual' && (
           <div className="space-y-3">
+            {/* Escolha do tipo de programa */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 block mb-1">Tipo de Programa</label>
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualDivisionMode('weekly');
+                    setManualDay('SEG');
+                    setManualTitle('Superiores A');
+                  }}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    manualDivisionMode === 'weekly'
+                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  Dias da Semana
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualDivisionMode('alphabetical');
+                    setManualDay('A');
+                    setManualTitle('Treino A - Superiores');
+                  }}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    manualDivisionMode === 'alphabetical'
+                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  Treinos A, B, C...
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] font-bold text-slate-400 block mb-1">Dia da Semana</label>
-                <select
-                  value={manualDay}
-                  onChange={(e) => setManualDay(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
-                >
-                  <option value="SEG">Segunda-feira</option>
-                  <option value="TER">Terça-feira</option>
-                  <option value="QUA">Quarta-feira</option>
-                  <option value="QUI">Quinta-feira</option>
-                  <option value="SEX">Sexta-feira</option>
-                  <option value="SAB">Sábado</option>
-                  <option value="DOM">Domingo</option>
-                </select>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1">
+                  {manualDivisionMode === 'alphabetical' ? 'Ficha / Divisão' : 'Dia da Semana'}
+                </label>
+                {manualDivisionMode === 'alphabetical' ? (
+                  <select
+                    value={manualDay}
+                    onChange={(e) => {
+                      setManualDay(e.target.value);
+                      if (manualTitle.startsWith('Treino ')) {
+                        setManualTitle(`Treino ${e.target.value}`);
+                      }
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="A">Treino A</option>
+                    <option value="B">Treino B</option>
+                    <option value="C">Treino C</option>
+                    <option value="D">Treino D</option>
+                    <option value="E">Treino E</option>
+                    <option value="F">Treino F</option>
+                  </select>
+                ) : (
+                  <select
+                    value={manualDay}
+                    onChange={(e) => setManualDay(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="SEG">Segunda-feira</option>
+                    <option value="TER">Terça-feira</option>
+                    <option value="QUA">Quarta-feira</option>
+                    <option value="QUI">Quinta-feira</option>
+                    <option value="SEX">Sexta-feira</option>
+                    <option value="SAB">Sábado</option>
+                    <option value="DOM">Domingo</option>
+                  </select>
+                )}
               </div>
 
               <div>
@@ -355,7 +429,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                   type="text"
                   value={manualTitle}
                   onChange={(e) => setManualTitle(e.target.value)}
-                  placeholder="Ex: Superiores A"
+                  placeholder={manualDivisionMode === 'alphabetical' ? 'Ex: Treino A - Peito' : 'Ex: Superiores A'}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
                 />
               </div>
@@ -432,11 +506,32 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           <div className="mt-4 pt-3 border-t border-slate-800">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Treinos Preparados ({previewDays.length} dias)
+                Treinos Preparados ({previewDays.length} {previewDays.length === 1 ? 'divisão' : 'divisões'})
               </span>
               <span className="text-[11px] text-teal-400 font-medium">
                 {previewDays.reduce((acc, d) => acc + d.exercises.length, 0)} exercícios no total
               </span>
+            </div>
+
+            {/* Quick Switcher de Organização */}
+            <div className="flex items-center justify-between gap-2 p-1.5 bg-slate-950/80 rounded-xl border border-slate-800 mb-2.5">
+              <span className="text-[10px] text-slate-400 font-bold px-1">Organizar como:</span>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPreviewDays(prev => convertToWeeklyDivision(prev))}
+                  className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+                >
+                  📅 Dias da Semana
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewDays(prev => convertToAlphabeticalDivision(prev))}
+                  className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 transition-colors"
+                >
+                  🔤 Treinos A, B, C...
+                </button>
+              </div>
             </div>
 
             <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">

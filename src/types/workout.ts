@@ -22,17 +22,18 @@ export interface Exercise {
   isOptional?: boolean;
 }
 
-export type DayCode = 'SEG' | 'TER' | 'QUA' | 'QUI' | 'SEX' | 'SAB' | 'DOM';
+export type DayCode = 'SEG' | 'TER' | 'QUA' | 'QUI' | 'SEX' | 'SAB' | 'DOM' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | string;
 
 export interface WorkoutDay {
   id: string;
   dayCode: DayCode;
   dayName: string;
   title: string;
-  shortLabel: string; // e.g. "Sup A", "Inf A"
-  categoryBadge: string; // e.g. "MEMBROS INFERIORES • A"
+  shortLabel: string; // e.g. "Sup A", "Inf A", "Treino A"
+  categoryBadge: string; // e.g. "MEMBROS INFERIORES • A", "TREINO A"
   subtitle: string;
   exercises: Exercise[];
+  divisionType?: 'weekly' | 'alphabetical';
 }
 
 export interface WorkoutCycle {
