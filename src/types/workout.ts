@@ -7,6 +7,14 @@ export interface ExerciseSet {
   completedAt?: string;
 }
 
+export interface WeightHistoryEntry {
+  id: string;
+  date: string;       // YYYY-MM-DD ou ISO
+  weight: number;     // kg
+  reps?: string;
+  setNumber?: number;
+}
+
 export interface Exercise {
   id: string;
   order: number;
@@ -20,6 +28,8 @@ export interface Exercise {
   sets: ExerciseSet[];
   isExpanded?: boolean;
   isOptional?: boolean;
+  lastWeight?: number;
+  weightHistory?: WeightHistoryEntry[];
 }
 
 export type DayCode = 'SEG' | 'TER' | 'QUA' | 'QUI' | 'SEX' | 'SAB' | 'DOM' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | string;
@@ -54,6 +64,7 @@ export interface RestTimerState {
   isActive: boolean;
   secondsRemaining: number;
   totalDuration: number;
+  targetEndTime?: number;
   exerciseName?: string;
 }
 

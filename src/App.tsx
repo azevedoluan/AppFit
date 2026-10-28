@@ -14,6 +14,7 @@ import { PWAInstallModal } from './components/PWAInstallModal';
 import { WelcomeUploadScreen } from './components/WelcomeUploadScreen';
 import { WorkoutCompletionModal } from './components/WorkoutCompletionModal';
 import { WorkoutHistoryCalendarModal } from './components/WorkoutHistoryCalendarModal';
+import { ExerciseWeightHistoryModal } from './components/ExerciseWeightHistoryModal';
 import { Sparkles, FileSpreadsheet, Timer as TimerIcon, Calendar as CalendarIcon, BellRing, AlertTriangle, RotateCcw } from 'lucide-react';
 import { sound } from './utils/sound';
 import { wipeAllUsersDatabase } from './utils/authStorage';
@@ -74,6 +75,7 @@ export const App: React.FC = () => {
   const [pendingCompletionRecord, setPendingCompletionRecord] = useState<CompletedWorkoutRecord | null>(null);
   const [pendingChangeDayId, setPendingChangeDayId] = useState<string | null>(null);
   const [showResetAndStartModal, setShowResetAndStartModal] = useState(false);
+  const [selectedExerciseForHistory, setSelectedExerciseForHistory] = useState<any>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   // Rest Timer State
@@ -81,6 +83,7 @@ export const App: React.FC = () => {
     isActive: boolean;
     secondsRemaining: number;
     totalDuration: number;
+    targetEndTime?: number;
     exerciseName?: string;
   }>({
     isActive: false,
@@ -100,11 +103,67 @@ export const App: React.FC = () => {
     }
   }, [restFinishedNotice]);
 
-  const triggerRestFinishedNotice = (exerciseName?: string) => {
-    // 1. Notificação nativa do sistema operacional (se permitida)
+  const wakeLockRef = useRef<any>(null);
+
+  const requestWakeLock = async () => {
+    try {
+      if ('wakeLock' in navigator && !wakeLockRef.current && document.visibilityState === 'visible') {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+      }
+    } catch {
+      // Ignora caso não suportado
+    }
+  };
+
+  const releaseWakeLock = () => {
+    try {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    } catch {
+      // Ignora
+    }
+  };
+
+  useEffect(() => {
+    if (isWorkoutActive || restTimer.isActive) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+  }, [isWorkoutActive, restTimer.isActive]);
+
+  const triggerRestFinishedNotice = async (exerciseName?: string) => {
+    sound.playTimerCompleteSound();
+
+    // 1. Notificação visual in-app em destaque
+    setRestFinishedNotice(exerciseName || 'Recuperação');
+
+    // 2. Notificação via Service Worker (permanece ativa em background no celular)
+    if ('serviceWorker' in navigator) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        if (reg && 'showNotification' in reg && Notification.permission === 'granted') {
+          await reg.showNotification('AppFit • Fim do Descanso! ⏰', {
+            body: exerciseName ? `Hora de iniciar a próxima série de ${exerciseName}!` : 'Descanso encerrado! Hora da próxima série!',
+            icon: '/manifest-icon-192.png',
+            badge: '/manifest-icon-192.png',
+            vibrate: [200, 100, 200, 100, 400],
+            tag: 'appfit-rest-finish',
+            renotify: true
+          } as any);
+          return;
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    // 3. Fallback Notificação nativa
     try {
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('AppFit • Fim do Descanso!', {
+        new Notification('AppFit • Fim do Descanso! ⏰', {
           body: exerciseName ? `Descanso finalizado! Hora da próxima série de ${exerciseName}.` : 'Descanso finalizado! Hora da próxima série!',
           icon: '/manifest-icon-192.png'
         });
@@ -112,9 +171,6 @@ export const App: React.FC = () => {
     } catch {
       // Ignora erro de permissão
     }
-
-    // 2. Notificação visual in-app em destaque
-    setRestFinishedNotice(exerciseName || 'Recuperação');
   };
 
   const timerIntervalRef = useRef<number | null>(null);
@@ -154,12 +210,17 @@ export const App: React.FC = () => {
     }
   }, [currentUser]);
 
-  // Workout Stopwatch Interval
+  // Workout Stopwatch Interval baseado em Timestamp (não congela com tela bloqueada)
   useEffect(() => {
-    if (isWorkoutActive) {
-      workoutStopwatchIntervalRef.current = window.setInterval(() => {
-        setWorkoutElapsedSeconds(prev => prev + 1);
-      }, 1000);
+    if (isWorkoutActive && workoutStartedAt) {
+      const syncWorkoutStopwatch = () => {
+        const startedTime = new Date(workoutStartedAt).getTime();
+        const elapsed = Math.max(0, Math.floor((Date.now() - startedTime) / 1000));
+        setWorkoutElapsedSeconds(elapsed);
+      };
+
+      syncWorkoutStopwatch();
+      workoutStopwatchIntervalRef.current = window.setInterval(syncWorkoutStopwatch, 500);
     } else {
       if (workoutStopwatchIntervalRef.current) {
         clearInterval(workoutStopwatchIntervalRef.current);
@@ -170,24 +231,31 @@ export const App: React.FC = () => {
         clearInterval(workoutStopwatchIntervalRef.current);
       }
     };
-  }, [isWorkoutActive]);
+  }, [isWorkoutActive, workoutStartedAt]);
 
-  // Rest Timer Interval
+  // Rest Timer Interval baseado em targetEndTime (calcula tempo real mesmo com tela bloqueada)
   useEffect(() => {
-    if (restTimer.isActive && restTimer.secondsRemaining > 0) {
-      timerIntervalRef.current = window.setInterval(() => {
-        setRestTimer((prev) => {
-          if (prev.secondsRemaining <= 1) {
-            sound.playTimerCompleteSound();
-            triggerRestFinishedNotice(prev.exerciseName);
-            return { ...prev, isActive: false, secondsRemaining: 0 };
-          }
-          if (prev.secondsRemaining <= 4) {
-            sound.playTickSound();
-          }
-          return { ...prev, secondsRemaining: prev.secondsRemaining - 1 };
-        });
-      }, 1000);
+    if (restTimer.isActive && restTimer.targetEndTime) {
+      const syncRestTimer = () => {
+        const now = Date.now();
+        const remaining = Math.max(0, Math.ceil((restTimer.targetEndTime! - now) / 1000));
+
+        if (remaining <= 0) {
+          triggerRestFinishedNotice(restTimer.exerciseName);
+          setRestTimer({ isActive: false, secondsRemaining: 0, totalDuration: 0 });
+          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        } else {
+          setRestTimer(prev => {
+            if (remaining <= 3 && remaining !== prev.secondsRemaining) {
+              sound.playTickSound();
+            }
+            return { ...prev, secondsRemaining: remaining };
+          });
+        }
+      };
+
+      syncRestTimer();
+      timerIntervalRef.current = window.setInterval(syncRestTimer, 500);
     } else {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     }
@@ -195,7 +263,48 @@ export const App: React.FC = () => {
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
-  }, [restTimer.isActive, restTimer.secondsRemaining]);
+  }, [restTimer.isActive, restTimer.targetEndTime]);
+
+  // Sincronização imediata ao desbloquear o celular ou retornar ao aplicativo
+  useEffect(() => {
+    const handleScreenWake = () => {
+      if (document.visibilityState === 'visible') {
+        // 1. Sincroniza cronômetro de treino
+        if (isWorkoutActive && workoutStartedAt) {
+          const startedTime = new Date(workoutStartedAt).getTime();
+          const elapsed = Math.max(0, Math.floor((Date.now() - startedTime) / 1000));
+          setWorkoutElapsedSeconds(elapsed);
+        }
+
+        // 2. Sincroniza cronômetro de descanso
+        if (restTimer.isActive && restTimer.targetEndTime) {
+          const now = Date.now();
+          const remaining = Math.max(0, Math.ceil((restTimer.targetEndTime - now) / 1000));
+          if (remaining <= 0) {
+            triggerRestFinishedNotice(restTimer.exerciseName);
+            setRestTimer({ isActive: false, secondsRemaining: 0, totalDuration: 0 });
+          } else {
+            setRestTimer(prev => ({ ...prev, secondsRemaining: remaining }));
+          }
+        }
+
+        // 3. Reativa wake lock de tela
+        if (isWorkoutActive || restTimer.isActive) {
+          requestWakeLock();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleScreenWake);
+    window.addEventListener('focus', handleScreenWake);
+    window.addEventListener('pageshow', handleScreenWake);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleScreenWake);
+      window.removeEventListener('focus', handleScreenWake);
+      window.removeEventListener('pageshow', handleScreenWake);
+    };
+  }, [isWorkoutActive, workoutStartedAt, restTimer.isActive, restTimer.targetEndTime]);
 
   // PWA Install Prompt Listener
   useEffect(() => {
@@ -387,15 +496,29 @@ export const App: React.FC = () => {
     setIsCompletionModalOpen(false);
     setPendingCompletionRecord(null);
 
-    // Quando encerra o treino, zera todos os exercícios da ficha para "não feito"
+    // Quando encerra o treino, zera todos os exercícios da ficha para "não feito", preservando rigorosamente as cargas e salvando no histórico de evolução
     const updated = workoutDays.map(day => {
       if (day.id !== record.workoutDayId) return day;
       return {
         ...day,
-        exercises: day.exercises.map(ex => ({
-          ...ex,
-          sets: ex.sets.map(s => ({ ...s, completed: false }))
-        }))
+        exercises: day.exercises.map(ex => {
+          const maxWeightInSets = Math.max(0, ...ex.sets.map(s => s.weight));
+          const existingHistory = ex.weightHistory || [];
+          const newHistory = [...existingHistory];
+          if (maxWeightInSets > 0) {
+            newHistory.push({
+              id: `wh-${Date.now()}-${ex.id}`,
+              date: new Date().toISOString(),
+              weight: maxWeightInSets
+            });
+          }
+          return {
+            ...ex,
+            lastWeight: maxWeightInSets > 0 ? maxWeightInSets : ex.lastWeight,
+            weightHistory: newHistory,
+            sets: ex.sets.map(s => ({ ...s, completed: false }))
+          };
+        })
       };
     });
     updateAndSaveWorkouts(updated);
@@ -533,20 +656,30 @@ export const App: React.FC = () => {
   };
 
   const handleStartRestTimer = (seconds: number, exerciseName: string) => {
+    sound.unlockAudio(); // Destrava o contexto de áudio durante o toque do usuário
+    const targetEndTime = Date.now() + seconds * 1000;
     setRestTimer({
       isActive: true,
       secondsRemaining: seconds,
       totalDuration: seconds,
+      targetEndTime,
       exerciseName
     });
   };
 
   const handleAdjustTimer = (delta: number) => {
-    setRestTimer(prev => ({
-      ...prev,
-      secondsRemaining: Math.max(5, prev.secondsRemaining + delta),
-      totalDuration: Math.max(5, prev.totalDuration + delta)
-    }));
+    sound.unlockAudio();
+    setRestTimer(prev => {
+      const currentTarget = prev.targetEndTime || (Date.now() + prev.secondsRemaining * 1000);
+      const newTarget = currentTarget + delta * 1000;
+      const newRemaining = Math.max(5, Math.ceil((newTarget - Date.now()) / 1000));
+      return {
+        ...prev,
+        targetEndTime: newTarget,
+        secondsRemaining: newRemaining,
+        totalDuration: Math.max(prev.totalDuration, newRemaining)
+      };
+    });
   };
 
   const handleCloseTimer = () => {
@@ -689,6 +822,7 @@ export const App: React.FC = () => {
                 onStartRestTimer={handleStartRestTimer}
                 onAddSet={handleAddSet}
                 onDeleteExercise={handleDeleteExercise}
+                onOpenWeightHistory={(ex) => setSelectedExerciseForHistory(ex)}
               />
             ))}
           </main>
@@ -862,6 +996,14 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal de Evolução de Carga do Exercício */}
+      <ExerciseWeightHistoryModal
+        isOpen={!!selectedExerciseForHistory}
+        onClose={() => setSelectedExerciseForHistory(null)}
+        exercise={selectedExerciseForHistory}
+        workoutHistory={workoutHistory}
+      />
 
       {/* Modals */}
       <ImportModal

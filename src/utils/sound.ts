@@ -2,6 +2,32 @@
 
 class SoundService {
   private audioCtx: AudioContext | null = null;
+  private isUnlocked = false;
+
+  constructor() {
+    // Prime audio on any first user interaction on the device
+    if (typeof window !== 'undefined') {
+      const unlock = () => {
+        this.unlockAudio();
+        window.removeEventListener('click', unlock);
+        window.removeEventListener('touchstart', unlock);
+      };
+      window.addEventListener('click', unlock, { passive: true });
+      window.addEventListener('touchstart', unlock, { passive: true });
+    }
+  }
+
+  unlockAudio() {
+    try {
+      this.initContext();
+      if (this.audioCtx && this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+      this.isUnlocked = true;
+    } catch {
+      // Ignore
+    }
+  }
 
   private initContext() {
     if (!this.audioCtx) {

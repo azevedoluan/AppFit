@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Exercise, ExerciseSet } from '../types/workout';
-import { Lightbulb, ChevronDown, ChevronUp, Clock, Plus, Trash2, CheckCircle2 } from 'lucide-react';
+import { Lightbulb, ChevronDown, ChevronUp, Clock, Plus, Trash2, CheckCircle2, TrendingUp } from 'lucide-react';
 import { sound } from '../utils/sound';
 
 interface ExerciseCardProps {
@@ -11,6 +11,7 @@ interface ExerciseCardProps {
   onStartRestTimer: (seconds: number, exerciseName: string) => void;
   onAddSet: (exerciseId: string) => void;
   onDeleteExercise: (exerciseId: string) => void;
+  onOpenWeightHistory?: (exercise: Exercise) => void;
 }
 
 export const ExerciseCard: React.FC<ExerciseCardProps> = ({
@@ -20,10 +21,12 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onToggleSet,
   onStartRestTimer,
   onAddSet,
-  onDeleteExercise
+  onDeleteExercise,
+  onOpenWeightHistory
 }) => {
   const isExpanded = exercise.isExpanded !== false;
   const allSetsCompleted = exercise.sets.length > 0 && exercise.sets.every(s => s.completed);
+  const currentMaxLoad = Math.max(0, ...(exercise.sets?.map(s => s.weight) || [0]), exercise.lastWeight || 0);
 
   const handleSetToggle = (setId: string) => {
     sound.playCheckSound();
@@ -50,7 +53,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           </div>
 
           <div className="flex-1 min-w-0">
-            {/* Category badge & series count */}
+            {/* Category badge, series count & current weight badge */}
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-cyan-950/70 border border-cyan-500/30 text-cyan-300">
                 {exercise.category}
@@ -58,6 +61,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               <span className="text-[11px] text-slate-400 font-medium">
                 {exercise.seriesCount} {exercise.seriesCount === 1 ? 'série' : 'séries'} • {exercise.repsDescription}
               </span>
+              {currentMaxLoad > 0 && (
+                <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono">
+                  {currentMaxLoad} kg
+                </span>
+              )}
               {exercise.isOptional && (
                 <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-semibold">
                   Opcional
@@ -179,13 +187,25 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 
           {/* Quick Exercise Actions */}
           <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
-            <button
-              onClick={() => onAddSet(exercise.id)}
-              className="flex items-center gap-1 hover:text-cyan-400 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Adicionar Série</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => onAddSet(exercise.id)}
+                className="flex items-center gap-1 hover:text-cyan-400 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Adicionar Série</span>
+              </button>
+
+              {onOpenWeightHistory && (
+                <button
+                  onClick={() => onOpenWeightHistory(exercise)}
+                  className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 font-bold transition-colors"
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>Evolução de Carga</span>
+                </button>
+              )}
+            </div>
 
             <button
               onClick={() => onDeleteExercise(exercise.id)}
