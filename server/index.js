@@ -66,6 +66,44 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+// Verifica se um usuário existe e seu status no PostgreSQL
+app.get('/api/users/check', async (req, res) => {
+  const email = req.query.email ? String(req.query.email).trim().toLowerCase() : '';
+  const userId = req.query.userId ? String(req.query.userId).trim() : '';
+
+  if (!email && !userId) {
+    return res.status(400).json({ error: 'email ou userId obrigatório' });
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT id, name, email, avatar_url, role, is_blocked, created_at FROM users WHERE LOWER(email) = $1 OR id = $2 LIMIT 1;',
+      [email, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ exists: false });
+    }
+
+    const u = result.rows[0];
+    return res.json({
+      exists: true,
+      user: {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        avatarUrl: u.avatar_url,
+        role: u.role,
+        isBlocked: Boolean(u.is_blocked),
+        createdAt: u.created_at
+      }
+    });
+  } catch (err) {
+    console.error('Erro ao checar existência de usuário:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Sincroniza / Cadastra usuário no PostgreSQL
 app.post('/api/users/sync', async (req, res) => {
   const { id, name, email, avatarUrl, provider } = req.body;
@@ -232,7 +270,7 @@ app.post('/api/admin/users/delete-workouts', async (req, res) => {
   }
 });
 
-// Apagar um usuário do sistema
+// Apagar um usuário do sistema (Exclusão definitiva e profunda)
 app.post('/api/admin/users/delete-user', async (req, res) => {
   const { targetUserId } = req.body;
   if (!targetUserId) {
@@ -240,9 +278,27 @@ app.post('/api/admin/users/delete-user', async (req, res) => {
   }
 
   try {
-    await pool.query("DELETE FROM users WHERE id = $1 AND role != 'admin';", [targetUserId]);
+    // 1. Remove referências diretas de sessões, histórico de cargas e fichas
+    await pool.query('DELETE FROM workout_session_sets WHERE session_id IN (SELECT id FROM workout_sessions WHERE user_id = $1);', [targetUserId]);
+    await pool.query('DELETE FROM workout_session_exercises WHERE session_id IN (SELECT id FROM workout_sessions WHERE user_id = $1);', [targetUserId]);
+    await pool.query('DELETE FROM workout_sessions WHERE user_id = $1;', [targetUserId]);
+    await pool.query('DELETE FROM exercise_weight_history WHERE user_id = $1;', [targetUserId]);
+    await pool.query('DELETE FROM exercise_sets WHERE exercise_id IN (SELECT e.id FROM exercises e JOIN workout_days d ON e.workout_day_id = d.id JOIN workout_programs p ON d.program_id = p.id WHERE p.user_id = $1);', [targetUserId]);
+    await pool.query('DELETE FROM exercises WHERE workout_day_id IN (SELECT d.id FROM workout_days d JOIN workout_programs p ON d.program_id = p.id WHERE p.user_id = $1);', [targetUserId]);
+    await pool.query('DELETE FROM workout_days WHERE program_id IN (SELECT id FROM workout_programs WHERE user_id = $1);', [targetUserId]);
+    await pool.query('DELETE FROM workout_programs WHERE user_id = $1;', [targetUserId]);
+    await pool.query('DELETE FROM workout_cycles WHERE user_id = $1;', [targetUserId]);
+    await pool.query('DELETE FROM user_preferences WHERE user_id = $1;', [targetUserId]);
+
+    // 2. Remove o próprio usuário do banco
+    const result = await pool.query("DELETE FROM users WHERE id = $1 AND role != 'admin' RETURNING id, email, name;", [targetUserId]);
+
     bumpSyncVersion(targetUserId);
-    res.json({ success: true, message: 'Usuário removido com sucesso!' });
+    res.json({
+      success: true,
+      message: 'Usuário e todos os seus treinos e dados foram removidos definitivamente!',
+      deletedUser: result.rows[0] || null
+    });
   } catch (err) {
     console.error('Erro ao remover usuário:', err);
     res.status(500).json({ error: err.message });

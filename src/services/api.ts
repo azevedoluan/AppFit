@@ -24,6 +24,20 @@ export const api = {
     }
   },
 
+  async checkUser(params: { email?: string; userId?: string }): Promise<{ exists: boolean; user?: any }> {
+    try {
+      const query = new URLSearchParams();
+      if (params.email) query.set('email', params.email);
+      if (params.userId) query.set('userId', params.userId);
+      const res = await fetch(`${BASE_URL}/users/check?${query.toString()}`);
+      if (!res.ok) return { exists: false };
+      return await res.json();
+    } catch (err) {
+      console.warn('[API] Falha ao verificar existência do usuário:', err);
+      return { exists: false };
+    }
+  },
+
   async syncUser(user: User): Promise<User> {
     try {
       const res = await fetch(`${BASE_URL}/users/sync`, {

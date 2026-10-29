@@ -8,6 +8,14 @@ import {
   handleGoogleSignInRequest,
   wipeAllUsersDatabase
 } from '../utils/authStorage';
+import { api } from '../services/api';
+import { purgeAllUserDataLocally } from '../utils/userWorkoutStorage';
+
+interface SavedGoogleAccount {
+  email: string;
+  name: string;
+  avatarUrl?: string;
+}
 
 interface AuthScreenProps {
   onLoginSuccess: (user: User) => void;
@@ -35,10 +43,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [simulatedCodeSent, setSimulatedCodeSent] = useState<string>('');
   const [resendCooldown, setResendCooldown] = useState(30);
 
-  // Google Account Selector State
+  // Google Account Selector State (Dinâmico e isolado por dispositivo)
   const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [savedDeviceGoogle, setSavedDeviceGoogle] = useState<SavedGoogleAccount | null>(null);
+  const [showManualGoogleInput, setShowManualGoogleInput] = useState(false);
   const [customGoogleEmail, setCustomGoogleEmail] = useState('');
   const [customGoogleName, setCustomGoogleName] = useState('');
+  const [isCheckingGoogleAccount, setIsCheckingGoogleAccount] = useState(false);
 
   const pinInputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -160,6 +171,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     setTimeout(() => {
       try {
         const verifiedUser = verifyAndRegisterUser(email, fullCode);
+        if (verifiedUser.provider === 'google') {
+          localStorage.setItem(
+            'appfit_device_saved_google',
+            JSON.stringify({
+              email: verifiedUser.email,
+              name: verifiedUser.name,
+              avatarUrl: verifiedUser.avatarUrl
+            })
+          );
+        }
         setIsLoading(false);
         setSuccessMessage('E-mail verificado com sucesso! Entrando...');
         setTimeout(() => onLoginSuccess(verifiedUser), 600);
@@ -184,22 +205,103 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  // Handle Google Sign-In (Requires 6-digit code on first access)
-  const handleGoogleSelect = (gEmail: string, gName: string) => {
+  // Abre Modal do Google: verifica se este dispositivo específico possui conta salva e checa no PostgreSQL
+  const handleOpenGoogleModal = async () => {
+    setShowGoogleModal(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsCheckingGoogleAccount(true);
+
+    try {
+      const raw = localStorage.getItem('appfit_device_saved_google');
+      if (raw) {
+        const parsed: SavedGoogleAccount = JSON.parse(raw);
+        if (parsed && parsed.email) {
+          const check = await api.checkUser({ email: parsed.email });
+          if (!check.exists) {
+            // Se o usuário foi excluído no PostgreSQL, limpa o atalho do aparelho
+            localStorage.removeItem('appfit_device_saved_google');
+            purgeAllUserDataLocally('', parsed.email);
+            setSavedDeviceGoogle(null);
+            setShowManualGoogleInput(true);
+            setIsCheckingGoogleAccount(false);
+            return;
+          }
+
+          if (check.user?.isBlocked) {
+            localStorage.removeItem('appfit_device_saved_google');
+            setSavedDeviceGoogle(null);
+            setShowManualGoogleInput(true);
+            setIsCheckingGoogleAccount(false);
+            return;
+          }
+
+          setSavedDeviceGoogle(parsed);
+          setShowManualGoogleInput(false);
+          setIsCheckingGoogleAccount(false);
+          return;
+        }
+      }
+    } catch {
+      // Ignora erro
+    }
+
+    setSavedDeviceGoogle(null);
+    setShowManualGoogleInput(true);
+    setIsCheckingGoogleAccount(false);
+  };
+
+  // Handle Google Sign-In
+  const handleGoogleSelect = async (gEmail: string, gName: string) => {
+    const cleanEmail = gEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMessage('Informe um e-mail válido para a conta Google.');
+      return;
+    }
+
     setIsLoading(true);
     setErrorMessage(null);
     setShowGoogleModal(false);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // 1. Checa status autoritativo no PostgreSQL
+      const check = await api.checkUser({ email: cleanEmail });
+
+      if (check.exists && check.user) {
+        if (check.user.isBlocked) {
+          setIsLoading(false);
+          setErrorMessage('Esta conta foi bloqueada pela administração do sistema.');
+          return;
+        }
+
+        // Salva atalho exclusivamente na memória deste aparelho
+        localStorage.setItem(
+          'appfit_device_saved_google',
+          JSON.stringify({
+            email: check.user.email,
+            name: check.user.name || gName,
+            avatarUrl: check.user.avatarUrl
+          })
+        );
+
+        setIsLoading(false);
+        setSuccessMessage(`Conectado com o Google (${check.user.name})!`);
+        setTimeout(() => onLoginSuccess(check.user), 500);
+        return;
+      }
+
+      // 2. Se o usuário NÃO existe no PostgreSQL (novo ou excluído pelo admin):
+      // Purga qualquer resquício local antigo deste e-mail
+      purgeAllUserDataLocally('', cleanEmail);
+
       const result = handleGoogleSignInRequest(
-        gEmail,
-        gName,
+        cleanEmail,
+        gName || cleanEmail.split('@')[0],
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
       );
 
+      setIsLoading(false);
       if (result.type === 'needs_verification') {
-        // First access for this Google account -> requires 6-digit code verification!
         setEmail(result.email);
         setName(result.name);
         setSimulatedCodeSent(result.code);
@@ -208,11 +310,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         setResendCooldown(30);
         setSuccessMessage(`Primeiro acesso com o Google! Código enviado para ${result.email}.`);
       } else {
-        // Returning verified Google user -> signs in directly
-        setSuccessMessage(`Conectado com o Google (${gName})!`);
+        localStorage.setItem(
+          'appfit_device_saved_google',
+          JSON.stringify({
+            email: result.user.email,
+            name: result.user.name,
+            avatarUrl: result.user.avatarUrl
+          })
+        );
+        setSuccessMessage(`Conectado com o Google (${result.user.name})!`);
         setTimeout(() => onLoginSuccess(result.user), 500);
       }
-    }, 500);
+    } catch (err: any) {
+      setIsLoading(false);
+      setErrorMessage(err?.message || 'Falha ao conectar conta Google.');
+    }
   };
 
   // ==========================================
@@ -401,7 +513,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {/* Real Google Account Link Button (no password requested) */}
         <button
           type="button"
-          onClick={() => setShowGoogleModal(true)}
+          onClick={handleOpenGoogleModal}
           disabled={isLoading}
           className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs shadow-lg active:scale-98 transition-all flex items-center justify-center gap-3 border border-slate-200"
         >
@@ -627,45 +739,107 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               A autenticação é validada diretamente pela Google. <strong>Não é necessário senha.</strong>
             </p>
 
-            {/* Account 1: Luan Azevedo */}
-            <button
-              onClick={() => handleGoogleSelect('luanmazevedo@gmail.com', 'Luan Azevedo')}
-              className="w-full p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 flex items-center gap-3 text-left transition-colors"
-            >
-              <div className="w-9 h-9 rounded-full bg-teal-500/20 text-teal-300 font-bold flex items-center justify-center text-xs">
-                LA
+            {/* Estado de checagem do servidor */}
+            {isCheckingGoogleAccount ? (
+              <div className="py-6 flex flex-col items-center justify-center gap-2 text-slate-400">
+                <Sparkles className="w-5 h-5 animate-spin text-cyan-400" />
+                <span className="text-xs">Verificando status da conta...</span>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-bold text-white">Luan Azevedo</div>
-                <div className="text-[11px] text-slate-400 truncate">luanmazevedo@gmail.com</div>
-              </div>
-            </button>
+            ) : savedDeviceGoogle && !showManualGoogleInput ? (
+              /* Conta Google salva especificamente neste aparelho */
+              <div className="space-y-3">
+                <div>
+                  <span className="text-[10px] text-cyan-400 font-extrabold uppercase tracking-wider block mb-1.5">
+                    Conta vinculada neste dispositivo:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleGoogleSelect(savedDeviceGoogle.email, savedDeviceGoogle.name)}
+                    className="w-full p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-900/90 hover:from-slate-800 hover:to-slate-800 border-2 border-cyan-500/40 hover:border-cyan-400 flex items-center gap-3 text-left transition-all group shadow-lg shadow-cyan-950/30"
+                  >
+                    <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-300 font-black flex items-center justify-center text-xs border border-cyan-500/40 shrink-0">
+                      {savedDeviceGoogle.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
+                        {savedDeviceGoogle.name}
+                      </div>
+                      <div className="text-[11px] text-slate-400 truncate font-mono">
+                        {savedDeviceGoogle.email}
+                      </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-cyan-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                  </button>
+                </div>
 
-            {/* Custom Google account input */}
-            <div className="pt-2 border-t border-slate-800 space-y-2">
-              <label className="text-[11px] text-slate-400 block font-semibold">Ou digite sua conta Google:</label>
-              <input
-                type="text"
-                placeholder="Seu nome"
-                value={customGoogleName}
-                onChange={(e) => setCustomGoogleName(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white"
-              />
-              <input
-                type="email"
-                placeholder="seu.email@gmail.com"
-                value={customGoogleEmail}
-                onChange={(e) => setCustomGoogleEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white"
-              />
-              <button
-                disabled={!customGoogleEmail.includes('@')}
-                onClick={() => handleGoogleSelect(customGoogleEmail, customGoogleName || customGoogleEmail.split('@')[0])}
-                className="w-full py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs disabled:opacity-40"
-              >
-                Vincular Conta Google e Acessar
-              </button>
-            </div>
+                <div className="flex items-center justify-between pt-1 px-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowManualGoogleInput(true)}
+                    className="text-[11px] font-semibold text-cyan-400 hover:underline"
+                  >
+                    Usar outra conta Google
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.removeItem('appfit_device_saved_google');
+                      setSavedDeviceGoogle(null);
+                      setShowManualGoogleInput(true);
+                    }}
+                    className="text-[10px] text-slate-500 hover:text-red-400 transition-colors"
+                  >
+                    Remover deste aparelho
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Formulário limpo para vincular conta Google (exibido em novos aparelhos ou se o usuário foi excluído) */
+              <div className="space-y-3 pt-1">
+                {savedDeviceGoogle && (
+                  <button
+                    type="button"
+                    onClick={() => setShowManualGoogleInput(false)}
+                    className="text-[11px] text-cyan-400 hover:underline mb-1 inline-block"
+                  >
+                    ← Voltar para {savedDeviceGoogle.name}
+                  </button>
+                )}
+
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-[11px] text-slate-400 block font-semibold mb-1">Seu Nome Completo:</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Luan Azevedo"
+                      value={customGoogleName}
+                      onChange={(e) => setCustomGoogleName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 block font-semibold mb-1">Seu E-mail do Google:</label>
+                    <input
+                      type="email"
+                      placeholder="seu.email@gmail.com"
+                      value={customGoogleEmail}
+                      onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors font-mono"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={!customGoogleEmail.includes('@') || isLoading}
+                    onClick={() => handleGoogleSelect(customGoogleEmail, customGoogleName || customGoogleEmail.split('@')[0])}
+                    className="w-full mt-2 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white font-extrabold text-xs shadow-lg shadow-teal-500/25 active:scale-98 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
+                  >
+                    <span>Vincular Conta Google e Acessar</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
 
             <button
               onClick={() => setShowGoogleModal(false)}

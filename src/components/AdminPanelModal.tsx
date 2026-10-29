@@ -17,6 +17,7 @@ import {
   Activity
 } from 'lucide-react';
 import { api } from '../services/api';
+import { purgeAllUserDataLocally, clearUserWorkouts } from '../utils/userWorkoutStorage';
 
 interface AdminUser {
   id: string;
@@ -117,6 +118,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       onConfirm: async () => {
         const ok = await api.deleteUserWorkouts(user.id);
         if (ok) {
+          clearUserWorkouts(user.id);
           showNotice(`Treino de ${user.name} apagado com sucesso!`);
           fetchUsers();
         }
@@ -154,6 +156,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       onConfirm: async () => {
         const ok = await api.deleteUser(user.id);
         if (ok) {
+          purgeAllUserDataLocally(user.id, user.email);
           showNotice(`Usuário ${user.name} removido do sistema.`);
           fetchUsers();
         }

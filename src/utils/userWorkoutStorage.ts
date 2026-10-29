@@ -142,3 +142,78 @@ export function addUserWorkoutHistoryRecord(userId: string, record: CompletedWor
   const updated = [record, ...existing];
   saveUserWorkoutHistory(userId, updated);
 }
+
+// Limpa completa e profundamente qualquer resquício local de um usuário
+export function purgeAllUserDataLocally(userId: string, email?: string): void {
+  const cleanEmail = email ? email.trim().toLowerCase() : '';
+
+  // 1. Chaves com o ID
+  if (userId) {
+    localStorage.removeItem(getWorkoutsKey(userId));
+    localStorage.removeItem(getCycleKey(userId));
+    localStorage.removeItem(getSelectedDayKey(userId));
+    localStorage.removeItem(getAvatarKey(userId));
+    localStorage.removeItem(getHistoryKey(userId));
+  }
+
+  // 2. Chaves com base no e-mail (caso o ID seja construído pelo e-mail)
+  if (cleanEmail) {
+    const emailSanitized = cleanEmail.replace(/[^a-z0-9]/g, '_');
+    localStorage.removeItem(`appfit_user_workouts_google-${emailSanitized}`);
+    localStorage.removeItem(`appfit_user_workouts_usr-${emailSanitized}`);
+    localStorage.removeItem(`appfit_user_cycle_google-${emailSanitized}`);
+    localStorage.removeItem(`appfit_user_cycle_usr-${emailSanitized}`);
+    localStorage.removeItem(`appfit_user_selected_day_google-${emailSanitized}`);
+    localStorage.removeItem(`appfit_user_selected_day_usr-${emailSanitized}`);
+    localStorage.removeItem(`appfit_user_history_google-${emailSanitized}`);
+    localStorage.removeItem(`appfit_user_history_usr-${emailSanitized}`);
+  }
+
+  // 3. Remove da lista de contas salvas no navegador
+  try {
+    const raw = localStorage.getItem('appfit_registered_users_v3');
+    if (raw) {
+      const accounts = JSON.parse(raw);
+      const filtered = accounts.filter((a: any) => {
+        const idMatches = userId && a.user?.id === userId;
+        const emailMatches = cleanEmail && a.user?.email?.toLowerCase() === cleanEmail;
+        return !idMatches && !emailMatches;
+      });
+      localStorage.setItem('appfit_registered_users_v3', JSON.stringify(filtered));
+    }
+  } catch {
+    // Ignore
+  }
+
+  // 4. Remove atalho Google salvo neste aparelho
+  try {
+    const savedGoogle = localStorage.getItem('appfit_device_saved_google');
+    if (savedGoogle) {
+      const parsed = JSON.parse(savedGoogle);
+      if (
+        (cleanEmail && parsed.email?.toLowerCase() === cleanEmail) ||
+        (userId && parsed.id === userId)
+      ) {
+        localStorage.removeItem('appfit_device_saved_google');
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
+  // 5. Remove da sessão corrente se for o mesmo usuário
+  try {
+    const currentSession = localStorage.getItem('appfit_current_session_user');
+    if (currentSession) {
+      const parsed = JSON.parse(currentSession);
+      if (
+        (userId && parsed.id === userId) ||
+        (cleanEmail && parsed.email?.toLowerCase() === cleanEmail)
+      ) {
+        localStorage.removeItem('appfit_current_session_user');
+      }
+    }
+  } catch {
+    // Ignore
+  }
+}

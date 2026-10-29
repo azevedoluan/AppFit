@@ -32,16 +32,17 @@ import {
   clearUserWorkouts,
   loadUserWorkoutHistory,
   saveUserWorkoutHistory,
-  addUserWorkoutHistoryRecord
+  addUserWorkoutHistoryRecord,
+  purgeAllUserDataLocally
 } from './utils/userWorkoutStorage';
 
 export const App: React.FC = () => {
   // Current Authenticated User (Strictly Scoped)
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     // Limpeza completa para testes limpos do zero
-    if (!localStorage.getItem('appfit_database_clean_v8_pg')) {
+    if (!localStorage.getItem('appfit_database_clean_v9_pg')) {
       wipeAllUsersDatabase();
-      localStorage.setItem('appfit_database_clean_v8_pg', 'true');
+      localStorage.setItem('appfit_database_clean_v9_pg', 'true');
       return null;
     }
 
@@ -228,7 +229,7 @@ export const App: React.FC = () => {
             }
           }
 
-          // 2. Busca treinos persistidos no PostgreSQL
+          // 2. Busca treinos persistidos no PostgreSQL (PostgreSQL é a fonte autoritativa da verdade)
           const remote = await api.getWorkouts(currentUser.id);
           if (remote && remote.workoutDays && remote.workoutDays.length > 0) {
             isSyncingFromRemoteRef.current = true;
@@ -243,9 +244,11 @@ export const App: React.FC = () => {
               : remote.workoutDays[0].id;
             setSelectedDayId(validDay);
             isSyncingFromRemoteRef.current = false;
-          } else if (userWorkouts && userWorkouts.length > 0) {
-            // Se o PostgreSQL ainda não tiver a ficha deste usuário, sobe os treinos locais
-            await api.saveWorkouts(currentUser.id, userWorkouts, userCycle);
+          } else {
+            // Se o PostgreSQL não tem treinos (usuário novo ou excluído pelo admin), limpa o estado local
+            setWorkoutDays([]);
+            saveUserWorkouts(currentUser.id, []);
+            setSelectedDayId('');
           }
 
           // 3. Busca histórico de sessões finalizadas
@@ -253,6 +256,9 @@ export const App: React.FC = () => {
           if (remoteSessions && remoteSessions.length > 0) {
             setWorkoutHistory(remoteSessions);
             saveUserWorkoutHistory(currentUser.id, remoteSessions);
+          } else {
+            setWorkoutHistory([]);
+            saveUserWorkoutHistory(currentUser.id, []);
           }
 
           // 4. Salva versão de sincronização
@@ -283,6 +289,23 @@ export const App: React.FC = () => {
 
     const pollSync = async () => {
       try {
+        // Verifica se o usuário comum ainda existe ou se foi bloqueado/excluído pelo admin
+        if (currentUser.role !== 'admin') {
+          const check = await api.checkUser({ userId: currentUser.id, email: currentUser.email });
+          if (!check.exists) {
+            handleLogout();
+            purgeAllUserDataLocally(currentUser.id, currentUser.email);
+            alert('Sua conta de usuário foi removida pelo administrador.');
+            return;
+          }
+          if (check.user?.isBlocked) {
+            handleLogout();
+            purgeAllUserDataLocally(currentUser.id, currentUser.email);
+            alert('Sua conta foi suspensa pela administração.');
+            return;
+          }
+        }
+
         const v = await api.getSyncVersion(currentUser.id);
         if (!v) {
           setIsDbConnected(false);

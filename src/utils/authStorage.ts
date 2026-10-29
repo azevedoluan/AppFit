@@ -20,6 +20,7 @@ export function wipeAllUsersDatabase(): void {
     localStorage.removeItem('appfit_is_guest');
     localStorage.removeItem('appfit_workout_days_v1');
     localStorage.removeItem('appfit_workout_days_v2');
+    localStorage.removeItem('appfit_device_saved_google');
 
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
