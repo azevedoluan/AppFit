@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { Camera, FileSpreadsheet, Upload, Sparkles, CheckCircle2, AlertCircle, Eye, ArrowRight, Dumbbell, Calendar, Layers } from 'lucide-react';
+import { Camera, FileSpreadsheet, Upload, Sparkles, CheckCircle2, AlertCircle, Eye, ArrowRight, Dumbbell, Calendar, Layers, Edit3, RefreshCw } from 'lucide-react';
 import type { WorkoutDay } from '../types/workout';
 import { parseSpreadsheet, parsePlainTextPlan, convertToAlphabeticalDivision, convertToWeeklyDivision } from '../utils/importUtils';
-import { initialWorkouts } from '../data/initialWorkouts';
+import { processWorkoutImage } from '../utils/imageOcr';
 
 interface WelcomeUploadScreenProps {
   onWorkoutsLoaded: (days: WorkoutDay[]) => void;
@@ -17,7 +17,10 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
+  const [scanStatusText, setScanStatusText] = useState('Iniciando leitura OCR...');
   const [scannedDays, setScannedDays] = useState<WorkoutDay[] | null>(null);
+  const [extractedRawText, setExtractedRawText] = useState('');
+  const [showRawTextEditor, setShowRawTextEditor] = useState(false);
   const [distributionMode, setDistributionMode] = useState<'weekly' | 'alphabetical'>('weekly');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -35,8 +38,8 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const sheetInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle Image Selection
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Leitura Real da Imagem via OCR
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -45,32 +48,48 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
     const url = URL.createObjectURL(file);
     setSelectedImage(url);
     setScannedDays(null);
+    setExtractedRawText('');
+    setIsScanning(true);
+    setScanProgress(5);
+    setScanStatusText('Lendo imagem da ficha...');
 
-    // Auto-trigger scanning process
-    simulateImageAnalysis(file);
+    try {
+      const result = await processWorkoutImage(file, (pct, status) => {
+        setScanProgress(pct);
+        setScanStatusText(status);
+      });
+
+      setExtractedRawText(result.text);
+
+      if (result.days.length === 0) {
+        setErrorMessage('Não foi possível identificar exercícios nesta imagem de forma estruturada. Revise o texto extraído no campo abaixo para ajustar os exercícios.');
+        setShowRawTextEditor(true);
+      } else {
+        setScannedDays(result.days);
+        setShowRawTextEditor(false);
+      }
+      setShowPreviewModal(true);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Erro ao processar imagem da ficha.');
+    } finally {
+      setIsScanning(false);
+    }
   };
 
-  // Simulate Intelligent Scan of the Training Sheet (Photo 2)
-  const simulateImageAnalysis = (file: File) => {
-    setIsScanning(true);
-    setScanProgress(15);
-
-    const step1 = setTimeout(() => setScanProgress(45), 400);
-    const step2 = setTimeout(() => setScanProgress(75), 800);
-    const step3 = setTimeout(() => {
-      setScanProgress(100);
-      setIsScanning(false);
-
-      // Recognize structure: provides full Luan Azevedo workout days extracted from image
-      setScannedDays(initialWorkouts);
-      setShowPreviewModal(true);
-    }, 1200);
-
-    return () => {
-      clearTimeout(step1);
-      clearTimeout(step2);
-      clearTimeout(step3);
-    };
+  // Re-processa texto caso o usuário faça edições no texto extraído pelo OCR
+  const handleReprocessEditedText = () => {
+    if (!extractedRawText.trim()) {
+      setErrorMessage('Digite ou cole os exercícios.');
+      return;
+    }
+    const days = parsePlainTextPlan(extractedRawText);
+    if (days.length === 0) {
+      setErrorMessage('Não foi possível identificar exercícios no texto. Utilize linhas como: "Supino Reto 3x10".');
+      return;
+    }
+    setScannedDays(days);
+    setShowRawTextEditor(false);
+    setErrorMessage(null);
   };
 
   // Handle Excel / CSV spreadsheet upload
@@ -169,10 +188,10 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
                 className="w-full h-auto max-h-56 object-contain mx-auto"
               />
               {isScanning && (
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center p-4">
+                <div className="absolute inset-0 bg-black/75 backdrop-blur-xs flex flex-col items-center justify-center p-4">
                   <Sparkles className="w-8 h-8 text-cyan-400 animate-spin mb-2" />
-                  <span className="text-xs font-bold text-white mb-2">
-                    Lendo dias da semana e exercícios da imagem...
+                  <span className="text-xs font-bold text-white mb-2 text-center px-2">
+                    {scanStatusText}
                   </span>
                   <div className="w-48 h-2 bg-slate-800 rounded-full overflow-hidden">
                     <div
@@ -180,6 +199,7 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
                       style={{ width: `${scanProgress}%` }}
                     />
                   </div>
+                  <span className="text-[10px] text-cyan-300 mt-1.5 font-mono">{scanProgress}%</span>
                 </div>
               )}
             </div>
@@ -248,7 +268,7 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
       </div>
 
       {/* Preview and Confirmation Modal */}
-      {showPreviewModal && scannedDays && (
+      {showPreviewModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
           <div className="bg-[#0b1220] border border-slate-800 rounded-3xl w-full max-w-md p-5 shadow-2xl space-y-4 my-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -257,77 +277,145 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
                   <CheckCircle2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold text-white">Treinos Reconhecidos</h3>
-                  <p className="text-xs text-slate-400">{scannedDays.length} dias de treino preparados</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Distribuição do Programa de Treino: Dias da Semana vs Treinos A, B, C */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-300 block">
-                Como deseja organizar este programa?
-              </label>
-              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-xl border border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => handleToggleDistribution('weekly')}
-                  className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    distributionMode === 'weekly'
-                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-md shadow-teal-500/20'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                  Dias da Semana
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleToggleDistribution('alphabetical')}
-                  className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    distributionMode === 'alphabetical'
-                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-md shadow-teal-500/20'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Layers className="w-3.5 h-3.5" />
-                  Treinos A, B, C...
-                </button>
-              </div>
-            </div>
-
-            <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
-              {scannedDays.map((day) => (
-                <div key={day.id} className="p-3 rounded-2xl bg-slate-900 border border-slate-800 text-xs">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-extrabold text-cyan-300">{day.dayName} — {day.title}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-300 font-bold">
-                      {day.exercises.length} exercícios
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 truncate">
-                    {day.exercises.map(e => e.name).slice(0, 3).join(', ')}...
+                  <h3 className="text-base font-extrabold text-white">Leitura da Imagem</h3>
+                  <p className="text-xs text-slate-400">
+                    {scannedDays && scannedDays.length > 0
+                      ? `${scannedDays.length} rotina(s) de treino identificada(s)`
+                      : 'Texto extraído do documento'}
                   </p>
                 </div>
-              ))}
+              </div>
+              {extractedRawText && (
+                <button
+                  type="button"
+                  onClick={() => setShowRawTextEditor(!showRawTextEditor)}
+                  className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] text-cyan-300 font-bold flex items-center gap-1.5 transition-colors"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>{showRawTextEditor ? 'Ver Prévia' : 'Ajustar OCR'}</span>
+                </button>
+              )}
             </div>
+
+            {/* Alerta de erro caso ocorra */}
+            {errorMessage && (
+              <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            {/* Modo 1: Editor de texto bruto do OCR */}
+            {showRawTextEditor ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-300">
+                    Texto extraído da foto (ajuste como desejar):
+                  </label>
+                  <span className="text-[10px] text-slate-500">Ex: Supino Reto 4x10</span>
+                </div>
+                <textarea
+                  rows={8}
+                  value={extractedRawText}
+                  onChange={(e) => setExtractedRawText(e.target.value)}
+                  placeholder="Treino A&#10;Supino Reto 4x10&#10;Crucifixo 3x12"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500 transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={handleReprocessEditedText}
+                  className="w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-cyan-600/20"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Re-processar e Atualizar Exercícios</span>
+                </button>
+              </div>
+            ) : scannedDays && scannedDays.length > 0 ? (
+              <>
+                {/* Distribuição do Programa de Treino: Dias da Semana vs Treinos A, B, C */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300 block">
+                    Como deseja organizar este programa?
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleDistribution('weekly')}
+                      className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        distributionMode === 'weekly'
+                          ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-md shadow-teal-500/20'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      Dias da Semana
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleDistribution('alphabetical')}
+                      className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        distributionMode === 'alphabetical'
+                          ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-md shadow-teal-500/20'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      Treinos A, B, C...
+                    </button>
+                  </div>
+                </div>
+
+                <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                  {scannedDays.map((day) => (
+                    <div key={day.id} className="p-3 rounded-2xl bg-slate-900 border border-slate-800 text-xs">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-extrabold text-cyan-300">{day.dayName} — {day.title}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-300 font-bold">
+                          {day.exercises.length} exercícios
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 truncate">
+                        {day.exercises.map(e => e.name).slice(0, 3).join(', ')}...
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4 space-y-2">
+                <p className="text-xs text-slate-300">
+                  Deseja digitar os exercícios da ficha ou tentar outra foto?
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowRawTextEditor(true)}
+                  className="text-xs text-cyan-400 font-bold hover:underline"
+                >
+                  Abrir editor de texto da ficha
+                </button>
+              </div>
+            )}
 
             <div className="pt-2 flex gap-2">
               <button
+                type="button"
                 onClick={() => setShowPreviewModal(false)}
                 className="flex-1 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
               >
                 Voltar
               </button>
-              <button
-                onClick={() => {
-                  setShowPreviewModal(false);
-                  handleConfirm();
-                }}
-                className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-extrabold text-xs shadow-lg shadow-teal-500/30"
-              >
-                Confirmar e Iniciar Treinos
-              </button>
+              {scannedDays && scannedDays.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPreviewModal(false);
+                    handleConfirm();
+                  }}
+                  className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white font-extrabold text-xs shadow-lg shadow-teal-500/30 active:scale-98 transition-all"
+                >
+                  Confirmar e Iniciar Treinos
+                </button>
+              )}
             </div>
           </div>
         </div>

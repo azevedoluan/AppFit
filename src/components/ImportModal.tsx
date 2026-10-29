@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, FileSpreadsheet, Image as ImageIcon, Plus, CheckCircle, AlertCircle, Sparkles, UploadCloud, Calendar, Layers } from 'lucide-react';
 import type { WorkoutDay } from '../types/workout';
 import { parseSpreadsheet, parsePlainTextPlan, convertToAlphabeticalDivision, convertToWeeklyDivision } from '../utils/importUtils';
+import { processWorkoutImage } from '../utils/imageOcr';
 
 interface ImportModalProps {
   isOpen: boolean;
@@ -66,23 +67,36 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     reader.readAsArrayBuffer(file);
   };
 
-  // Handle Training Image Upload
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Training Image Upload (OCR Real via Tesseract)
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setErrorMessage(null);
-    setSuccessMessage(null);
+    setSuccessMessage('Iniciando leitura OCR da foto da ficha...');
     setIsProcessing(true);
 
     const imageUrl = URL.createObjectURL(file);
     setImagePreviewUrl(imageUrl);
 
-    // Provide default template or prompt for user to inspect/review
-    setTimeout(() => {
+    try {
+      const result = await processWorkoutImage(file, (pct, status) => {
+        setSuccessMessage(`${status}`);
+      });
+
+      setPastedText(result.text);
+
+      if (result.days.length > 0) {
+        setPreviewDays(result.days);
+        setSuccessMessage(`Leitura OCR concluída! ${result.days.length} rotina(s) de treino identificada(s) na imagem.`);
+      } else {
+        setSuccessMessage('Texto da imagem lido com sucesso! Você pode ajustar o texto abaixo e clicar em "Processar Texto".');
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Falha ao processar imagem.');
+    } finally {
       setIsProcessing(false);
-      setSuccessMessage('Imagem carregada! Você pode ajustar o texto abaixo ou usar a leitura automática.');
-    }, 600);
+    }
   };
 
   // Process text from OCR or user input

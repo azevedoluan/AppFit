@@ -197,7 +197,8 @@ export function parsePlainTextPlan(text: string): WorkoutDay[] {
   let order = 1;
 
   for (const line of lines) {
-    const isDayHeader = /^(SEGUNDA|TERÇA|TERCA|QUARTA|QUINTA|SEXTA|SÁBADO|SABADO|DOMINGO|TREINO\s+[A-Z]|FICHA\s+[A-Z]|[A-Z]\s*[—–-])/i.test(line);
+    // Detecta cabeçalhos de treino/dia (ex: "TREINO A", "FICHA B", "SEGUNDA-FEIRA", "PEITO E TRICEPS")
+    const isDayHeader = /^(SEGUNDA|TERÇA|TERCA|QUARTA|QUINTA|SEXTA|SÁBADO|SABADO|DOMINGO|TREINO\s+[A-Z0-9]|FICHA\s+[A-Z0-9]|[A-Z]\s*[—–\-:])\b/i.test(line);
 
     if (isDayHeader) {
       if (currentDay && currentDay.exercises.length > 0) {
@@ -206,11 +207,11 @@ export function parsePlainTextPlan(text: string): WorkoutDay[] {
       }
 
       const { code, name, isAlphabetical } = parseDayCode(line);
-      const splitHeader = line.split(/[—–-]/);
+      const splitHeader = line.split(/[—–\-:]/);
       const title = splitHeader.length > 1 ? splitHeader.slice(1).join(' - ').trim() : line;
 
       currentDay = {
-        id: `day-${code.toLowerCase()}-${Date.now()}`,
+        id: `day-${code.toLowerCase()}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         dayCode: code,
         dayName: name,
         title: title || name,
@@ -224,45 +225,39 @@ export function parsePlainTextPlan(text: string): WorkoutDay[] {
       continue;
     }
 
+    // Se ainda não houver um dia criado, cria um "Treino A" inicial padrão
     if (!currentDay) {
-      // Default to a day if no day header encountered yet
       currentDay = {
-        id: `day-treino-${Date.now()}`,
-        dayCode: 'SEG',
-        dayName: 'Segunda',
+        id: `day-treino-a-${Date.now()}`,
+        dayCode: 'A',
+        dayName: 'Treino A',
         title: 'Treino A',
         shortLabel: 'Treino A',
         categoryBadge: 'TREINO A',
         subtitle: 'Exercícios importados',
-        exercises: []
+        exercises: [],
+        divisionType: 'alphabetical'
       };
     }
 
-    // Ignore lines that look like column headers
-    if (/exerc[ií]cio|s[ée]ries|repeti/i.test(line)) continue;
+    // Ignora linhas que são cabeçalhos de colunas
+    if (/^(exerc[ií]cio|s[ée]ries|repeti|descanso|tempo|carga|ordem)/i.test(line)) continue;
 
-    // Split by tabs, pipe, or comma
-    const parts = line.split(/[\t|;]/).map(p => p.trim());
-    const name = parts[0];
-    if (name.length < 3) continue;
-
-    const seriesRaw = parts[1] || '2';
-    const seriesCount = parseInt(seriesRaw, 10) || 2;
-    const repsDescription = parts[2] || '10-12 reps';
-    const restDescription = parts[3] || '60-90 s';
-    const orientation = parts[4] || '';
+    // Extrai informações do exercício (suporta delimitadores ou OCR de linguagem natural)
+    const parsedEx = parseExerciseDetailsFromLine(line);
+    if (!parsedEx) continue;
 
     currentDay.exercises.push({
-      id: `ex-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: `ex-${Date.now()}-${Math.random().toString(36).substring(2, 6)}-${order}`,
       order: order++,
-      name,
-      category: detectCategory(name),
-      seriesCount,
-      repsDescription,
-      restDescription,
+      name: parsedEx.name,
+      category: detectCategory(parsedEx.name),
+      seriesCount: parsedEx.seriesCount,
+      repsDescription: parsedEx.repsDescription,
+      restDescription: parsedEx.restDescription,
       suggestedRestOptions: [45, 60, 90, 120],
-      orientation: orientation || 'Movimento e respiração controlados.',
-      sets: buildSets(seriesCount, repsDescription),
+      orientation: parsedEx.orientation || 'Movimento e respiração controlados.',
+      sets: buildSets(parsedEx.seriesCount, parsedEx.repsDescription),
       isExpanded: true
     });
   }
@@ -273,6 +268,73 @@ export function parsePlainTextPlan(text: string): WorkoutDay[] {
   }
 
   return parsedDays;
+}
+
+// Analisador inteligente de linha de exercício (delimitado ou linguagem natural de OCR)
+function parseExerciseDetailsFromLine(line: string): {
+  name: string;
+  seriesCount: number;
+  repsDescription: string;
+  restDescription: string;
+  orientation: string;
+} | null {
+  // 1. Caso esteja delimitado por tabulação, pipe ou ponto-e-vírgula
+  if (line.includes('\t') || line.includes('|') || line.includes(';')) {
+    const parts = line.split(/[\t|;]/).map(p => p.trim());
+    const name = parts[0].replace(/^\d+[\.\-\)]\s*/, '').trim();
+    if (name.length < 2) return null;
+    const seriesCount = parseInt(parts[1] || '3', 10) || 3;
+    const repsDescription = parts[2] || '10-12 reps';
+    const restDescription = parts[3] || '60s';
+    const orientation = parts[4] || '';
+    return { name, seriesCount, repsDescription, restDescription, orientation };
+  }
+
+  // 2. Extração para OCR / texto livre
+  let clean = line.replace(/^\d+[\.\-\)]\s*/, '').trim();
+  if (clean.length < 3) return null;
+
+  // Extrai descanso (ex: "60s", "90 seg", "1 min")
+  let restDescription = '60s';
+  const restMatch = clean.match(/(?:descanso|intervalo)?\s*(\d{2,3}\s*(?:s|seg|segundos)|1\s*min(?:uto)?)/i);
+  if (restMatch) {
+    restDescription = restMatch[1].trim();
+    clean = clean.replace(restMatch[0], ' ').trim();
+  }
+
+  // Extrai séries e repetições (ex: "4x10-12", "3 x 12 a 15", "3x10")
+  let seriesCount = 3;
+  let repsDescription = '10-12 reps';
+
+  const xPatternMatch = clean.match(/(\d+)\s*[xX]\s*([\d\s\-–a-zA-ZáéíóúÁÉÍÓÚ]+)/);
+  if (xPatternMatch) {
+    seriesCount = parseInt(xPatternMatch[1], 10) || 3;
+    const rawReps = xPatternMatch[2].trim();
+    repsDescription = rawReps.toLowerCase().includes('rep') ? rawReps : `${rawReps} reps`;
+    clean = clean.replace(xPatternMatch[0], ' ').trim();
+  } else {
+    // Padrão "3 séries de 10" ou "4 series 12 reps"
+    const seriesWordMatch = clean.match(/(\d+)\s*s[ée]ries?\s*(?:de\s*)?([\d\s\-–a-zA-Z]+)?/i);
+    if (seriesWordMatch) {
+      seriesCount = parseInt(seriesWordMatch[1], 10) || 3;
+      if (seriesWordMatch[2]) {
+        const rawReps = seriesWordMatch[2].trim();
+        repsDescription = rawReps.toLowerCase().includes('rep') ? rawReps : `${rawReps} reps`;
+      }
+      clean = clean.replace(seriesWordMatch[0], ' ').trim();
+    }
+  }
+
+  const name = clean.replace(/[\-–—\|;]+$/, '').replace(/^[\-–—\|;]+/, '').trim();
+  if (name.length < 2) return null;
+
+  return {
+    name,
+    seriesCount,
+    repsDescription,
+    restDescription,
+    orientation: ''
+  };
 }
 
 // Export current workouts to Excel spreadsheet

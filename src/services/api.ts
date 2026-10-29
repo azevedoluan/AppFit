@@ -24,17 +24,26 @@ export const api = {
     }
   },
 
-  async checkUser(params: { email?: string; userId?: string }): Promise<{ exists: boolean; user?: any }> {
+  async checkUser(params: { email?: string; userId?: string }): Promise<{ exists: boolean; user?: any; networkError?: boolean }> {
     try {
       const query = new URLSearchParams();
       if (params.email) query.set('email', params.email);
       if (params.userId) query.set('userId', params.userId);
       const res = await fetch(`${BASE_URL}/users/check?${query.toString()}`);
-      if (!res.ok) return { exists: false };
-      return await res.json();
+      if (!res.ok) {
+        // Erro HTTP (servidor ocupado, 502/503) -> não é confirmação de deleção
+        return { exists: true, networkError: true };
+      }
+      const data = await res.json();
+      return {
+        exists: Boolean(data.exists),
+        user: data.user,
+        networkError: false
+      };
     } catch (err) {
-      console.warn('[API] Falha ao verificar existência do usuário:', err);
-      return { exists: false };
+      // Falha de rede (ex: Safari acordando do repouso, celular sem sinal)
+      console.warn('[API] Falha de conexão ao checar usuário (offline/standby):', err);
+      return { exists: true, networkError: true };
     }
   },
 

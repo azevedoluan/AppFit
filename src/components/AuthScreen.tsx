@@ -168,7 +168,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     setIsLoading(true);
     setErrorMessage(null);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         const verifiedUser = verifyAndRegisterUser(email, fullCode);
         if (verifiedUser.provider === 'google') {
@@ -181,14 +181,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             })
           );
         }
+        // Persiste imediatamente no PostgreSQL antes de concluir o login
+        const canonical = await api.syncUser(verifiedUser);
         setIsLoading(false);
         setSuccessMessage('E-mail verificado com sucesso! Entrando...');
-        setTimeout(() => onLoginSuccess(verifiedUser), 600);
+        setTimeout(() => onLoginSuccess(canonical || verifiedUser), 500);
       } catch (err: unknown) {
         setIsLoading(false);
         setErrorMessage(err instanceof Error ? err.message : 'Código inválido.');
       }
-    }, 600);
+    }, 500);
   };
 
   // Resend code
@@ -218,8 +220,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         const parsed: SavedGoogleAccount = JSON.parse(raw);
         if (parsed && parsed.email) {
           const check = await api.checkUser({ email: parsed.email });
-          if (!check.exists) {
-            // Se o usuário foi excluído no PostgreSQL, limpa o atalho do aparelho
+          // Apenas apaga o atalho caso o servidor confirme explicitamente que não existe (não em erro de rede/standby)
+          if (!check.networkError && check.exists === false) {
             localStorage.removeItem('appfit_device_saved_google');
             purgeAllUserDataLocally('', parsed.email);
             setSavedDeviceGoogle(null);

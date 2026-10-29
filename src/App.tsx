@@ -292,17 +292,20 @@ export const App: React.FC = () => {
         // Verifica se o usuário comum ainda existe ou se foi bloqueado/excluído pelo admin
         if (currentUser.role !== 'admin') {
           const check = await api.checkUser({ userId: currentUser.id, email: currentUser.email });
-          if (!check.exists) {
-            handleLogout();
-            purgeAllUserDataLocally(currentUser.id, currentUser.email);
-            alert('Sua conta de usuário foi removida pelo administrador.');
-            return;
-          }
-          if (check.user?.isBlocked) {
-            handleLogout();
-            purgeAllUserDataLocally(currentUser.id, currentUser.email);
-            alert('Sua conta foi suspensa pela administração.');
-            return;
+          // Só desconecta se o servidor confirmou explicitamente (evita falso logout quando o Safari acorda do repouso)
+          if (!check.networkError) {
+            if (check.exists === false) {
+              handleLogout();
+              purgeAllUserDataLocally(currentUser.id, currentUser.email);
+              alert('Sua conta de usuário foi removida pelo administrador.');
+              return;
+            }
+            if (check.user?.isBlocked) {
+              handleLogout();
+              purgeAllUserDataLocally(currentUser.id, currentUser.email);
+              alert('Sua conta foi suspensa pela administração.');
+              return;
+            }
           }
         }
 
