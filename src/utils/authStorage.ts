@@ -162,16 +162,39 @@ export function verifyAndRegisterUser(email: string, inputCode: string): User {
 
 // Strict email + password login validation
 export function loginAccount(email: string, password: string): User {
-  const cleanEmail = email.trim().toLowerCase();
+  const cleanInput = email.trim();
+  const cleanLower = cleanInput.toLowerCase();
+
+  // Credenciais do Administrador do Sistema (AppFit)
+  if (cleanLower === 'appfit' || cleanLower === 'admin@appfit.com') {
+    if (password === 'ATKa7ra7te&') {
+      return {
+        id: 'user-admin-001',
+        name: 'AppFit',
+        email: 'admin@appfit.com',
+        provider: 'local',
+        role: 'admin',
+        isEmailVerified: true,
+        createdAt: '2026-10-28T00:00:00.000Z'
+      };
+    } else {
+      throw new Error('Senha de administrador incorreta.');
+    }
+  }
+
   const accounts = getRegisteredAccounts();
 
-  const account = accounts.find(a => a.user.email.toLowerCase() === cleanEmail);
+  const account = accounts.find(a => a.user.email.toLowerCase() === cleanLower);
   if (!account) {
-    throw new Error('E-mail não encontrado. Verifique o e-mail digitado ou crie uma conta na aba "Cadastrar".');
+    throw new Error('Usuário ou e-mail não encontrado. Verifique os dados digitados ou crie uma conta na aba "Cadastrar".');
   }
 
   if (account.password !== password) {
     throw new Error('Senha incorreta. Verifique os dados e tente novamente.');
+  }
+
+  if (account.user.isBlocked) {
+    throw new Error('Esta conta de usuário foi bloqueada pela administração do sistema.');
   }
 
   return account.user;

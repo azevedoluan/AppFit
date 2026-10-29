@@ -46,10 +46,13 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url TEXT,
     auth_provider VARCHAR(50) NOT NULL DEFAULT 'email',
     is_email_verified BOOLEAN NOT NULL DEFAULT false,
+    role VARCHAR(20) NOT NULL DEFAULT 'user',
+    is_blocked BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_users_auth_provider CHECK (auth_provider IN ('email', 'google', 'apple', 'local')),
-    CONSTRAINT chk_users_email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+    CONSTRAINT chk_users_email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
+    CONSTRAINT chk_users_role CHECK (role IN ('user', 'admin'))
 );
 
 COMMENT ON TABLE users IS 'Armazena credenciais, perfil básico e identidade de autenticação dos usuários';

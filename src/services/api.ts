@@ -209,5 +209,85 @@ export const api = {
     } catch {
       return null;
     }
+  },
+
+  // ==========================================
+  // ADMIN API CALLS
+  // ==========================================
+  async getAdminUsers(): Promise<any[]> {
+    try {
+      const res = await fetch(`${BASE_URL}/admin/users`);
+      if (!res.ok) throw new Error('Erro ao listar usuários no painel admin');
+      return await res.json();
+    } catch (err) {
+      console.warn('[Admin API] Falha ao listar usuários:', err);
+      return [];
+    }
+  },
+
+  async blockUser(targetUserId: string, isBlocked: boolean): Promise<boolean> {
+    try {
+      const res = await fetch(`${BASE_URL}/admin/users/block`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserId, isBlocked })
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[Admin API] Falha ao bloquear/desbloquear usuário:', err);
+      return false;
+    }
+  },
+
+  async deleteUserWorkouts(targetUserId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${BASE_URL}/admin/users/delete-workouts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserId })
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[Admin API] Falha ao apagar treinos do usuário:', err);
+      return false;
+    }
+  },
+
+  async deleteUser(targetUserId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${BASE_URL}/admin/users/delete-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserId })
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[Admin API] Falha ao apagar usuário:', err);
+      return false;
+    }
+  },
+
+  async cleanupHistory(options: { targetUserId?: string; olderThanDays?: number; clearAll?: boolean }): Promise<boolean> {
+    try {
+      const res = await fetch(`${BASE_URL}/admin/history/cleanup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options)
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[Admin API] Falha ao limpar históricos:', err);
+      return false;
+    }
+  },
+
+  async resetAllSystemData(): Promise<boolean> {
+    try {
+      const res = await fetch(`${BASE_URL}/reset-all`, { method: 'POST' });
+      return res.ok;
+    } catch (err) {
+      console.warn('[Admin API] Falha ao zerar banco:', err);
+      return false;
+    }
   }
 };

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, User, Download, Upload, RotateCcw, Cloud, Calendar, FileSpreadsheet, LogOut, Check } from 'lucide-react';
+import { X, User, Download, Upload, Calendar, FileSpreadsheet, LogOut, Check } from 'lucide-react';
 import type { WorkoutDay, WorkoutCycle } from '../types/workout';
 import { exportToExcel } from '../utils/importUtils';
 import { calculateCycleFromDates, calculateEndDateFromWeeks, calculateEndDateFromMonths, formatDateBr } from '../utils/dateUtils';
@@ -17,7 +17,7 @@ interface SettingsModalProps {
   onResetToDefault: () => void;
   onRestoreBackup: (days: WorkoutDay[]) => void;
   onOpenInstallModal: () => void;
-  onClearAllWorkouts: () => void;
+  onClearAllWorkouts?: () => void;
   onLogout: () => void;
 }
 
@@ -31,17 +31,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   cycle,
   onUpdateCycle,
   workoutDays,
-  onResetToDefault,
   onRestoreBackup,
-  onOpenInstallModal,
-  onClearAllWorkouts,
   onLogout
 }) => {
   const [name, setName] = useState(userName);
   const [startDate, setStartDate] = useState(cycle.startDate);
   const [endDate, setEndDate] = useState(cycle.endDate);
   const [durationWeeks, setDurationWeeks] = useState(cycle.durationWeeks);
-  const [showOciInfo, setShowOciInfo] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   if (!isOpen) return null;
@@ -279,50 +275,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <span>Restaurar Backup JSON</span>
             <input type="file" accept=".json" onChange={handleImportJson} className="hidden" />
           </label>
-        </div>
-
-        {/* OCI Info Accordion */}
-        <div className="bg-slate-900/60 p-3.5 rounded-2xl border border-slate-800">
-          <button
-            onClick={() => setShowOciInfo(!showOciInfo)}
-            className="w-full flex items-center justify-between text-xs font-bold text-slate-300 uppercase tracking-wider"
-          >
-            <div className="flex items-center gap-1.5 text-amber-400">
-              <Cloud className="w-4 h-4" />
-              <span>Hospedagem Oracle OCI</span>
-            </div>
-            <span>{showOciInfo ? '▲' : '▼'}</span>
-          </button>
-
-          {showOciInfo && (
-            <div className="mt-3 text-xs text-slate-400 space-y-2 border-t border-slate-800 pt-2 leading-relaxed">
-              <p>
-                O AppFit foi empacotado com <strong>Dockerfile</strong> e <strong>docker-compose.yml</strong>, pronto para rodar na VM Always Free da Oracle Cloud.
-              </p>
-              <code className="block p-2 rounded-lg bg-black text-cyan-300 font-mono text-[11px]">
-                docker compose up -d --build
-              </code>
-            </div>
-          )}
-        </div>
-
-        {/* Danger zone: Clear / Reset */}
-        <div className="flex items-center justify-between pt-1">
-          <button
-            onClick={onClearAllWorkouts}
-            className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 font-semibold"
-            title="Zerar todos os treinos para subir nova imagem"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Zerar treinos atuais
-          </button>
-
-          <button
-            onClick={onResetToDefault}
-            className="text-xs text-slate-400 hover:text-slate-200"
-          >
-            Recarregar treino exemplo
-          </button>
         </div>
       </div>
     </div>

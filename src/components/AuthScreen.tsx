@@ -59,8 +59,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    if (!email || !email.includes('@')) {
-      setErrorMessage('Por favor, informe um endereço de e-mail válido.');
+    const isLoginAdmin = email.trim().toLowerCase() === 'appfit';
+    if (!isLoginAdmin && (!email || !email.includes('@'))) {
+      setErrorMessage('Por favor, informe um endereço de e-mail válido ou usuário.');
       return;
     }
 
@@ -471,17 +472,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           )}
 
           <div>
-            <label className="text-[11px] font-bold text-slate-400 block mb-1">E-mail</label>
+            <label className="text-[11px] font-bold text-slate-400 block mb-1">
+              {mode === 'login' ? 'E-mail ou Usuário' : 'E-mail'}
+            </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                 <Mail className="w-4 h-4" />
               </div>
               <input
-                type="email"
+                type="text"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu.email@exemplo.com"
+                placeholder={mode === 'login' ? 'seu.email@exemplo.com ou AppFit' : 'seu.email@exemplo.com'}
                 className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500"
               />
             </div>

@@ -72,24 +72,62 @@ app.post('/api/users/sync', async (req, res) => {
   if (!email) {
     return res.status(400).json({ error: 'Email é obrigatório' });
   }
-  const userId = id || `user-${Date.now()}`;
-  const userName = name || email.split('@')[0];
-  const userProvider = provider || 'email';
+
+  const cleanEmail = email.trim().toLowerCase();
+  const isAdmin = cleanEmail === 'admin@appfit.com' || cleanEmail === 'appfit';
+  const finalEmail = isAdmin ? 'admin@appfit.com' : cleanEmail;
+  const finalName = isAdmin ? 'AppFit' : (name || cleanEmail.split('@')[0]);
+  const role = isAdmin ? 'admin' : 'user';
 
   try {
+    // 1. Busca por e-mail ou ID
+    const existing = await pool.query(
+      'SELECT id, name, email, avatar_url, auth_provider, is_email_verified, role, is_blocked, created_at FROM users WHERE LOWER(email) = $1 OR id = $2 LIMIT 1;',
+      [finalEmail, id || '']
+    );
+
+    if (existing.rows.length > 0) {
+      const u = existing.rows[0];
+      if (u.is_blocked) {
+        return res.status(403).json({ error: 'Esta conta de usuário foi bloqueada pela administração do sistema.' });
+      }
+
+      // Se for admin, garante a role no banco
+      if (isAdmin && u.role !== 'admin') {
+        await pool.query("UPDATE users SET role = 'admin', name = 'AppFit' WHERE id = $1;", [u.id]);
+        u.role = 'admin';
+        u.name = 'AppFit';
+      }
+
+      return res.json({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        avatarUrl: u.avatar_url,
+        provider: u.auth_provider,
+        isEmailVerified: u.is_email_verified,
+        role: u.role || 'user',
+        isBlocked: Boolean(u.is_blocked),
+        createdAt: u.created_at
+      });
+    }
+
+    // 2. Novo usuário
+    const userId = id || (isAdmin ? 'user-admin-001' : `user-${Date.now()}`);
     const query = `
-      INSERT INTO users (id, name, email, avatar_url, auth_provider, is_email_verified)
-      VALUES ($1, $2, $3, $4, $5, true)
+      INSERT INTO users (id, name, email, avatar_url, auth_provider, is_email_verified, role, is_blocked)
+      VALUES ($1, $2, $3, $4, $5, true, $6, false)
       ON CONFLICT (email) DO UPDATE 
       SET name = EXCLUDED.name,
+          role = EXCLUDED.role,
           avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
           updated_at = CURRENT_TIMESTAMP
-      RETURNING id, name, email, avatar_url, auth_provider, is_email_verified, created_at;
+      RETURNING id, name, email, avatar_url, auth_provider, is_email_verified, role, is_blocked, created_at;
     `;
-    const result = await pool.query(query, [userId, userName, email, avatarUrl || null, userProvider]);
+    const result = await pool.query(query, [userId, finalName, finalEmail, avatarUrl || null, provider || 'local', role]);
     const u = result.rows[0];
 
-    // Garante que existam preferências padrão
+    // Garante preferências padrão
     await pool.query(
       `INSERT INTO user_preferences (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING;`,
       [u.id]
@@ -102,10 +140,146 @@ app.post('/api/users/sync', async (req, res) => {
       avatarUrl: u.avatar_url,
       provider: u.auth_provider,
       isEmailVerified: u.is_email_verified,
+      role: u.role || 'user',
+      isBlocked: Boolean(u.is_blocked),
       createdAt: u.created_at
     });
   } catch (err) {
     console.error('Erro ao sincronizar usuário:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// ADMIN API ROUTES (Apenas Administrador AppFit)
+// ============================================================================
+
+// Lista usuários completos com estatísticas para o painel de administração
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        u.id, 
+        u.name, 
+        u.email, 
+        u.role, 
+        u.is_blocked, 
+        u.created_at,
+        COALESCE((SELECT count(*) FROM workout_programs wp WHERE wp.user_id = u.id AND wp.is_active = true), 0)::int as programs_count,
+        COALESCE((SELECT count(*) FROM workout_days wd JOIN workout_programs wp ON wp.id = wd.program_id WHERE wp.user_id = u.id), 0)::int as days_count,
+        COALESCE((SELECT count(*) FROM exercises ex JOIN workout_days wd ON wd.id = ex.workout_day_id JOIN workout_programs wp ON wp.id = wd.program_id WHERE wp.user_id = u.id), 0)::int as exercises_count,
+        COALESCE((SELECT count(*) FROM workout_sessions ws WHERE ws.user_id = u.id), 0)::int as sessions_count,
+        (SELECT MAX(started_at) FROM workout_sessions ws WHERE ws.user_id = u.id) as last_session_at
+      FROM users u
+      ORDER BY u.role DESC, u.created_at DESC;
+    `);
+
+    const users = result.rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      role: r.role || 'user',
+      isBlocked: Boolean(r.is_blocked),
+      createdAt: r.created_at,
+      programsCount: r.programs_count,
+      daysCount: r.days_count,
+      exercisesCount: r.exercises_count,
+      sessionsCount: r.sessions_count,
+      lastSessionAt: r.last_session_at
+    }));
+
+    res.json(users);
+  } catch (err) {
+    console.error('Erro ao listar usuários para o admin:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bloquear / Desbloquear usuário
+app.post('/api/admin/users/block', async (req, res) => {
+  const { targetUserId, isBlocked } = req.body;
+  if (!targetUserId) {
+    return res.status(400).json({ error: 'targetUserId é obrigatório' });
+  }
+
+  try {
+    await pool.query(
+      'UPDATE users SET is_blocked = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2;',
+      [Boolean(isBlocked), targetUserId]
+    );
+    bumpSyncVersion(targetUserId);
+    res.json({ success: true, isBlocked: Boolean(isBlocked) });
+  } catch (err) {
+    console.error('Erro ao bloquear usuário:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Apagar os treinos de um usuário específico
+app.post('/api/admin/users/delete-workouts', async (req, res) => {
+  const { targetUserId } = req.body;
+  if (!targetUserId) {
+    return res.status(400).json({ error: 'targetUserId é obrigatório' });
+  }
+
+  try {
+    await pool.query('DELETE FROM workout_programs WHERE user_id = $1;', [targetUserId]);
+    bumpSyncVersion(targetUserId);
+    res.json({ success: true, message: 'Treinos do usuário removidos com sucesso!' });
+  } catch (err) {
+    console.error('Erro ao apagar treinos do usuário:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Apagar um usuário do sistema
+app.post('/api/admin/users/delete-user', async (req, res) => {
+  const { targetUserId } = req.body;
+  if (!targetUserId) {
+    return res.status(400).json({ error: 'targetUserId é obrigatório' });
+  }
+
+  try {
+    await pool.query("DELETE FROM users WHERE id = $1 AND role != 'admin';", [targetUserId]);
+    bumpSyncVersion(targetUserId);
+    res.json({ success: true, message: 'Usuário removido com sucesso!' });
+  } catch (err) {
+    console.error('Erro ao remover usuário:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Limpar históricos de treinos (antigos ou gerais)
+app.post('/api/admin/history/cleanup', async (req, res) => {
+  const { targetUserId, olderThanDays, clearAll } = req.body;
+
+  try {
+    if (clearAll) {
+      if (targetUserId) {
+        await pool.query('DELETE FROM workout_sessions WHERE user_id = $1;', [targetUserId]);
+      } else {
+        await pool.query('TRUNCATE TABLE workout_sessions, workout_session_exercises, workout_session_sets, exercise_weight_history CASCADE;');
+      }
+    } else if (olderThanDays && olderThanDays > 0) {
+      if (targetUserId) {
+        await pool.query(
+          `DELETE FROM workout_sessions 
+           WHERE user_id = $1 AND started_at < (CURRENT_TIMESTAMP - ($2 || ' days')::interval);`,
+          [targetUserId, olderThanDays]
+        );
+      } else {
+        await pool.query(
+          `DELETE FROM workout_sessions 
+           WHERE started_at < (CURRENT_TIMESTAMP - ($1 || ' days')::interval);`,
+          [olderThanDays]
+        );
+      }
+    }
+
+    if (targetUserId) bumpSyncVersion(targetUserId);
+    res.json({ success: true, message: 'Históricos limpos com sucesso!' });
+  } catch (err) {
+    console.error('Erro ao limpar histórico:', err);
     res.status(500).json({ error: err.message });
   }
 });

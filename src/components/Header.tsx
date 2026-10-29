@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { RotateCcw, MoreVertical, Dumbbell, Camera, Calendar, Clock } from 'lucide-react';
+import { RotateCcw, MoreVertical, Dumbbell, Camera, Calendar, Clock, Shield } from 'lucide-react';
 import type { WorkoutCycle } from '../types/workout';
 import { formatDateBr, getDaysRemaining } from '../utils/dateUtils';
 
@@ -16,6 +16,8 @@ interface HeaderProps {
   onOpenCalendar?: () => void;
   isInstallable: boolean;
   hasWorkouts: boolean;
+  isAdmin?: boolean;
+  onOpenAdminPanel?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,7 +32,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenInstall,
   onOpenCalendar,
   isInstallable,
-  hasWorkouts
+  hasWorkouts,
+  isAdmin,
+  onOpenAdminPanel
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const percentage = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
@@ -61,6 +65,17 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {isAdmin && onOpenAdminPanel && (
+            <button
+              onClick={onOpenAdminPanel}
+              title="Abrir Painel Administrativo"
+              className="px-2.5 py-1 text-xs font-black rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 shadow-md shadow-amber-500/20 active:scale-95 transition-all flex items-center gap-1.5"
+            >
+              <Shield className="w-3.5 h-3.5 fill-slate-950" />
+              <span>Painel Admin</span>
+            </button>
+          )}
+
           {isInstallable && (
             <button
               onClick={onOpenInstall}

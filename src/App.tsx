@@ -15,6 +15,7 @@ import { WelcomeUploadScreen } from './components/WelcomeUploadScreen';
 import { WorkoutCompletionModal } from './components/WorkoutCompletionModal';
 import { WorkoutHistoryCalendarModal } from './components/WorkoutHistoryCalendarModal';
 import { ExerciseWeightHistoryModal } from './components/ExerciseWeightHistoryModal';
+import { AdminPanelModal } from './components/AdminPanelModal';
 import { Sparkles, FileSpreadsheet, Timer as TimerIcon, Calendar as CalendarIcon, BellRing, AlertTriangle, RotateCcw } from 'lucide-react';
 import { sound } from './utils/sound';
 import { wipeAllUsersDatabase } from './utils/authStorage';
@@ -78,6 +79,7 @@ export const App: React.FC = () => {
   const [pendingChangeDayId, setPendingChangeDayId] = useState<string | null>(null);
   const [showResetAndStartModal, setShowResetAndStartModal] = useState(false);
   const [selectedExerciseForHistory, setSelectedExerciseForHistory] = useState<any>(null);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   // Rest Timer State
@@ -214,9 +216,16 @@ export const App: React.FC = () => {
         try {
           // 1. Sincroniza usuário e recupera ID canônico do banco
           const canonical = await api.syncUser(currentUser);
-          if (canonical && canonical.id !== currentUser.id) {
-            setCurrentUser(canonical);
-            return;
+          if (canonical) {
+            if (canonical.isBlocked) {
+              handleLogout();
+              alert('Sua conta foi suspensa ou desativada pelo administrador.');
+              return;
+            }
+            if (canonical.id !== currentUser.id || canonical.role !== currentUser.role) {
+              setCurrentUser(canonical);
+              return;
+            }
           }
 
           // 2. Busca treinos persistidos no PostgreSQL
@@ -967,6 +976,7 @@ export const App: React.FC = () => {
   ) || 0;
 
   const hasWorkouts = workoutDays.length > 0;
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.name === 'AppFit' || currentUser?.email === 'admin@appfit.com';
 
   // Se não estiver logado, exibe tela de autenticação estrita
   if (!currentUser) {
@@ -993,6 +1003,8 @@ export const App: React.FC = () => {
         onOpenCalendar={() => setIsHistoryModalOpen(true)}
         isInstallable={!!deferredPrompt}
         hasWorkouts={hasWorkouts}
+        isAdmin={isAdmin}
+        onOpenAdminPanel={() => setIsAdminModalOpen(true)}
       />
 
       {/* Se o usuário já tiver treinos ativos, mostra os dias da semana e os exercícios */}
@@ -1251,6 +1263,12 @@ export const App: React.FC = () => {
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
         deferredPrompt={deferredPrompt}
+      />
+
+      <AdminPanelModal
+        isOpen={isAdminModalOpen}
+        onClose={() => setIsAdminModalOpen(false)}
+        currentUserId={currentUser?.id || ''}
       />
     </div>
   );

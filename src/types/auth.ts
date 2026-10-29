@@ -3,8 +3,10 @@ export interface User {
   name: string;
   email: string;
   avatarUrl?: string;
-  provider: 'email' | 'google';
+  provider: 'email' | 'google' | 'local';
   isEmailVerified: boolean;
+  role?: 'user' | 'admin';
+  isBlocked?: boolean;
   createdAt: string;
 }
 
