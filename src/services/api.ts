@@ -13,6 +13,20 @@ export const api = {
     }
   },
 
+  async analyzeWorkoutImage(imageBase64: string): Promise<{ text: string; days: WorkoutDay[]; confidence?: number } | null> {
+    try {
+      const res = await fetch(`${BASE_URL}/ocr/analyze-workout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageBase64 })
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
   async getUsers(): Promise<User[]> {
     try {
       const res = await fetch(`${BASE_URL}/users`);

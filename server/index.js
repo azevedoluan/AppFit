@@ -1,12 +1,16 @@
 import express from 'express';
 import cors from 'cors';
 import { pool } from './db.js';
+import sharp from 'sharp';
+import Tesseract from 'tesseract.js';
+import { parseWorkoutPlanFromText } from './ocrParser.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // In-memory sync versions map: userId -> { version: number, timestamp: number }
 const userSyncVersions = new Map();
@@ -42,6 +46,42 @@ app.get('/api/health', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+// ============================================================================
+// OCR INTELIGENTE DE FICHAS DE TREINO (Sharp + Tesseract)
+// ============================================================================
+app.post('/api/ocr/analyze-workout', async (req, res) => {
+  const { image } = req.body;
+  if (!image) {
+    return res.status(400).json({ error: 'Nenhuma imagem enviada para análise.' });
+  }
+
+  try {
+    const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // Pré-processamento avançado da imagem (upscale 2400px, grayscale, normalise, sharpen)
+    const processedBuffer = await sharp(buffer)
+      .resize({ width: 2400, withoutEnlargement: false })
+      .grayscale()
+      .normalise()
+      .sharpen()
+      .toBuffer();
+
+    const result = await Tesseract.recognize(processedBuffer, 'por+eng');
+    const rawText = result.data.text || '';
+    const days = parseWorkoutPlanFromText(rawText);
+
+    res.json({
+      text: rawText,
+      days,
+      confidence: result.data.confidence || 0
+    });
+  } catch (err) {
+    console.error('Erro ao processar OCR da imagem:', err);
+    res.status(500).json({ error: 'Erro no processamento visual da imagem: ' + err.message });
   }
 });
 

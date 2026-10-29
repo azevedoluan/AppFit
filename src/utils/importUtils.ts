@@ -76,18 +76,18 @@ export function convertToWeeklyDivision(days: WorkoutDay[]): WorkoutDay[] {
 function detectCategory(name: string): string {
   const n = name.toLowerCase();
   if (n.includes('aquec') || n.includes('mobilidade')) return 'AQUECIMENTO';
-  if (n.includes('quadríceps') || n.includes('extensora')) return 'QUADRÍCEPS';
+  if (n.includes('quadríceps') || n.includes('quadriceps') || n.includes('extensora') || n.includes('agachamento') || n.includes('afundo') || n.includes('smith')) return 'QUADRÍCEPS';
   if (n.includes('flexora') || n.includes('stiff')) return 'POSTERIOR COXA';
-  if (n.includes('leg press') || n.includes('agachamento')) return 'COMPOSTO';
-  if (n.includes('abdutora') || n.includes('glúteo') || n.includes('elevacao pelvica')) return 'GLÚTEO';
+  if (n.includes('leg press')) return 'COMPOSTO';
+  if (n.includes('abdutora') || n.includes('glúteo') || n.includes('gluteo') || n.includes('pélvica') || n.includes('pelvica')) return 'GLÚTEO';
   if (n.includes('panturrilha')) return 'PANTURRILHAS';
   if (n.includes('supino') || n.includes('crucifixo') || n.includes('peitoral')) return 'PEITORAL';
-  if (n.includes('remada') || n.includes('puxada') || n.includes('dorsal')) return 'COSTAS';
-  if (n.includes('elevação lateral') || n.includes('desenvolvimento') || n.includes('ombro')) return 'OMBROS';
+  if (n.includes('remada') || n.includes('puxada') || n.includes('dorsal') || n.includes('face pull')) return 'COSTAS';
+  if (n.includes('elevação lateral') || n.includes('elevacao lateral') || n.includes('desenvolvimento') || n.includes('ombro')) return 'OMBROS';
   if (n.includes('bíceps') || n.includes('biceps') || n.includes('rosca')) return 'BÍCEPS';
   if (n.includes('tríceps') || n.includes('triceps')) return 'TRÍCEPS';
-  if (n.includes('abdominal') || n.includes('bracing') || n.includes('prancha') || n.includes('core')) return 'CORE';
-  if (n.includes('bicicleta') || n.includes('aeróbico') || n.includes('caminhada') || n.includes('esteira')) return 'CARDIO';
+  if (n.includes('abdominal') || n.includes('prancha') || n.includes('dead bug') || n.includes('pallof') || n.includes('core') || n.includes('bracing')) return 'CORE';
+  if (n.includes('esteira') || n.includes('bicicleta') || n.includes('caminhada') || n.includes('aeróbico') || n.includes('cardio')) return 'CARDIO';
   if (n.includes('marcha') || n.includes('bird dog') || n.includes('funcional')) return 'FUNCIONAL';
   return 'GERAL';
 }
@@ -189,63 +189,164 @@ export function parseSpreadsheet(data: ArrayBuffer): WorkoutDay[] {
   return parsedDays;
 }
 
+const DEFAULT_WEEK_DAYS = [
+  { code: 'SEG' as DayCode, name: 'Segunda', defaultTitle: 'Inferior A' },
+  { code: 'TER' as DayCode, name: 'Terça', defaultTitle: 'Superior A' },
+  { code: 'QUA' as DayCode, name: 'Quarta', defaultTitle: 'Condicionamento + Core' },
+  { code: 'QUI' as DayCode, name: 'Quinta', defaultTitle: 'Inferior B' },
+  { code: 'SEX' as DayCode, name: 'Sexta', defaultTitle: 'Superior B' },
+  { code: 'SAB' as DayCode, name: 'Sábado', defaultTitle: 'Cardio Opcional' },
+  { code: 'DOM' as DayCode, name: 'Domingo', defaultTitle: 'Descanso' }
+];
+
 // Parse free-form or OCR-extracted text
 export function parsePlainTextPlan(text: string): WorkoutDay[] {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const parsedDays: WorkoutDay[] = [];
   let currentDay: WorkoutDay | null = null;
+  let dayIdx = -1;
   let order = 1;
 
-  for (const line of lines) {
-    // Detecta cabeçalhos de treino/dia (ex: "TREINO A", "FICHA B", "SEGUNDA-FEIRA", "PEITO E TRICEPS")
-    const isDayHeader = /^(SEGUNDA|TERÇA|TERCA|QUARTA|QUINTA|SEXTA|SÁBADO|SABADO|DOMINGO|TREINO\s+[A-Z0-9]|FICHA\s+[A-Z0-9]|[A-Z]\s*[—–\-:])\b/i.test(line);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
 
-    if (isDayHeader) {
+    if (/(?:plano|orienta[çc]|ciclo\s+inicial|objetivo|semanal|preencha)/i.test(line)) {
+      continue;
+    }
+
+    // 1. Detecta cabeçalhos de treino/dia (semana, letra ou subtítulo de grupamento)
+    const hasWeek = /(?:SEGUNDA|TER[CÇ]A|QUARTA|QUINTA|SEXTA|S[AÁ]BADO|DOMINGO|TREINO\s+[A-Z0-9]|FICHA\s+[A-Z0-9])/i.test(line);
+    const hasCategoryHeader = /^(?:Quadr[ií]ceps|Peito|Esteira\s*\+|Posterior|Costas|Aproveitar|Superior|Inferior)/i.test(line.replace(/^[^\w\s]*\s*/, ''));
+
+    // Se ainda não encontrou o primeiro dia e não é cabeçalho de dia, ignora ruído do cabeçalho
+    if (!currentDay && !hasWeek && !hasCategoryHeader) {
+      continue;
+    }
+
+    if (hasWeek || hasCategoryHeader) {
       if (currentDay && currentDay.exercises.length > 0) {
         currentDay.subtitle = `${currentDay.exercises.length} exercícios planejados`;
-        parsedDays.push(currentDay);
+      }
+
+      if (hasWeek) {
+        let foundWeekIdx = -1;
+        if (/SEGUNDA/i.test(line)) foundWeekIdx = 0;
+        else if (/TER[CÇ]A/i.test(line)) foundWeekIdx = 1;
+        else if (/QUARTA/i.test(line)) foundWeekIdx = 2;
+        else if (/QUINTA/i.test(line)) foundWeekIdx = 3;
+        else if (/SEXTA/i.test(line)) foundWeekIdx = 4;
+        else if (/S[AÁ]BADO/i.test(line)) foundWeekIdx = 5;
+        else if (/DOMINGO/i.test(line)) foundWeekIdx = 6;
+
+        if (foundWeekIdx !== -1) {
+          dayIdx = foundWeekIdx;
+        } else {
+          dayIdx++;
+        }
+      } else {
+        dayIdx++;
+      }
+
+      const week = DEFAULT_WEEK_DAYS[dayIdx % DEFAULT_WEEK_DAYS.length];
+      let title = week.defaultTitle;
+
+      if (hasWeek) {
+        const cleanDay = line
+          .replace(/^[^\w\s]*\s*/, '')
+          .replace(/^(?:SEGUNDA|TER[CÇ]A|QUARTA|QUINTA|SEXTA|S[AÁ]BADO|DOMINGO|TREINO\s+[A-Z0-9]|FICHA\s+[A-Z0-9])\s*[-—–:]*\s*/i, '')
+          .trim();
+        if (cleanDay.length > 2) title = cleanDay;
+      } else if (hasCategoryHeader) {
+        title = `${week.defaultTitle} — ${line.replace(/^[^\w\s]*\s*/, '').trim()}`;
       }
 
       const { code, name, isAlphabetical } = parseDayCode(line);
-      const splitHeader = line.split(/[—–\-:]/);
-      const title = splitHeader.length > 1 ? splitHeader.slice(1).join(' - ').trim() : line;
+      const dayCode = isAlphabetical ? code : week.code;
+      const dayName = isAlphabetical ? name : week.name;
 
       currentDay = {
-        id: `day-${code.toLowerCase()}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        dayCode: code,
-        dayName: name,
-        title: title || name,
-        shortLabel: isAlphabetical ? `Treino ${code}` : title.slice(0, 8),
-        categoryBadge: title.toUpperCase(),
+        id: `day-${dayCode.toLowerCase()}-${Date.now()}-${dayIdx}`,
+        dayCode,
+        dayName,
+        title: title || dayName,
+        shortLabel: isAlphabetical ? `Treino ${dayCode}` : title.slice(0, 10),
+        categoryBadge: `${dayName.toUpperCase()} • ${title.toUpperCase()}`,
         subtitle: 'Exercícios importados',
         exercises: [],
         divisionType: isAlphabetical ? 'alphabetical' : 'weekly'
       };
+      parsedDays.push(currentDay);
       order = 1;
       continue;
     }
 
-    // Se ainda não houver um dia criado, cria um "Treino A" inicial padrão
-    if (!currentDay) {
-      currentDay = {
-        id: `day-treino-a-${Date.now()}`,
-        dayCode: 'A',
-        dayName: 'Treino A',
-        title: 'Treino A',
-        shortLabel: 'Treino A',
-        categoryBadge: 'TREINO A',
-        subtitle: 'Exercícios importados',
-        exercises: [],
-        divisionType: 'alphabetical'
-      };
+    // 2. Se a tabela repetir o cabeçalho (Exercício ... Séries) e o dia atual já tiver exercícios:
+    if (/exerc[ií]cio/i.test(line) && /s[ée]ries/i.test(line)) {
+      if (currentDay && currentDay.exercises.length > 0) {
+        currentDay.subtitle = `${currentDay.exercises.length} exercícios planejados`;
+        dayIdx++;
+        const week = DEFAULT_WEEK_DAYS[dayIdx % DEFAULT_WEEK_DAYS.length];
+        currentDay = {
+          id: `day-${week.code.toLowerCase()}-${Date.now()}-${dayIdx}`,
+          dayCode: week.code,
+          dayName: week.name,
+          title: week.defaultTitle,
+          shortLabel: week.defaultTitle.slice(0, 10),
+          categoryBadge: `${week.name.toUpperCase()} • ${week.defaultTitle.toUpperCase()}`,
+          subtitle: 'Exercícios importados',
+          exercises: [],
+          divisionType: 'weekly'
+        };
+        parsedDays.push(currentDay);
+        order = 1;
+      }
+      continue;
     }
 
-    // Ignora linhas que são cabeçalhos de colunas
-    if (/^(exerc[ií]cio|s[ée]ries|repeti|descanso|tempo|carga|ordem)/i.test(line)) continue;
+    // Ignora linhas que são cabeçalhos de colunas ou rodapés informativos
+    if (/^(exerc[ií]cio|s[ée]ries|repeti|descanso|tempo|carga|ordem|observa|final|cardio|intensidade)/i.test(line)) continue;
 
-    // Extrai informações do exercício (suporta delimitadores ou OCR de linguagem natural)
+    // Extrai informações do exercício
     const parsedEx = parseExerciseDetailsFromLine(line);
     if (!parsedEx) continue;
+
+    // 3. Se o exercício é o # 1 e o dia atual já tem 2 ou mais exercícios: transição de dia!
+    if (parsedEx.exerciseNumber === 1 && currentDay && currentDay.exercises.length >= 2) {
+      currentDay.subtitle = `${currentDay.exercises.length} exercícios planejados`;
+      dayIdx++;
+      const week = DEFAULT_WEEK_DAYS[dayIdx % DEFAULT_WEEK_DAYS.length];
+      currentDay = {
+        id: `day-${week.code.toLowerCase()}-${Date.now()}-${dayIdx}`,
+        dayCode: week.code,
+        dayName: week.name,
+        title: week.defaultTitle,
+        shortLabel: week.defaultTitle.slice(0, 10),
+        categoryBadge: `${week.name.toUpperCase()} • ${week.defaultTitle.toUpperCase()}`,
+        subtitle: 'Exercícios importados',
+        exercises: [],
+        divisionType: 'weekly'
+      };
+      parsedDays.push(currentDay);
+      order = 1;
+    }
+
+    if (!currentDay) {
+      dayIdx = 0;
+      const week = DEFAULT_WEEK_DAYS[0];
+      currentDay = {
+        id: `day-${week.code.toLowerCase()}-${Date.now()}-${dayIdx}`,
+        dayCode: week.code,
+        dayName: week.name,
+        title: week.defaultTitle,
+        shortLabel: week.defaultTitle.slice(0, 10),
+        categoryBadge: `${week.name.toUpperCase()} • ${week.defaultTitle.toUpperCase()}`,
+        subtitle: 'Exercícios importados',
+        exercises: [],
+        divisionType: 'weekly'
+      };
+      parsedDays.push(currentDay);
+      order = 1;
+    }
 
     currentDay.exercises.push({
       id: `ex-${Date.now()}-${Math.random().toString(36).substring(2, 6)}-${order}`,
@@ -264,7 +365,6 @@ export function parsePlainTextPlan(text: string): WorkoutDay[] {
 
   if (currentDay && currentDay.exercises.length > 0) {
     currentDay.subtitle = `${currentDay.exercises.length} exercícios planejados`;
-    parsedDays.push(currentDay);
   }
 
   return parsedDays;
@@ -272,29 +372,59 @@ export function parsePlainTextPlan(text: string): WorkoutDay[] {
 
 // Analisador inteligente de linha de exercício (delimitado ou linguagem natural de OCR)
 function parseExerciseDetailsFromLine(line: string): {
+  exerciseNumber: number | null;
   name: string;
   seriesCount: number;
   repsDescription: string;
   restDescription: string;
   orientation: string;
 } | null {
+  if (/^(plano de trein|exerc[ií]cio|s[ée]ries|repeti|descanso|tempo|carga|ordem|observa|final|cardio|intensidade|preencha as colunas)/i.test(line)) {
+    return null;
+  }
+
+  let clean = line.replace(/^[^\w\s]*\s*/, '').trim();
+
+  // Detecta número inicial do exercício (ex: "1 ", "1. ", "02 - ", "3) ")
+  const numMatch = clean.match(/^(\d+)[\.\-\)\s]+\s*/);
+  const exerciseNumber = numMatch ? parseInt(numMatch[1], 10) : null;
+  if (numMatch) {
+    clean = clean.replace(numMatch[0], '').trim();
+  }
+
+  if (clean.length < 2) return null;
+
   // 1. Caso esteja delimitado por tabulação, pipe ou ponto-e-vírgula
-  if (line.includes('\t') || line.includes('|') || line.includes(';')) {
-    const parts = line.split(/[\t|;]/).map(p => p.trim());
-    const name = parts[0].replace(/^\d+[\.\-\)]\s*/, '').trim();
+  if (clean.includes('\t') || clean.includes('|') || clean.includes(';')) {
+    const parts = clean.split(/[\t|;]/).map(p => p.trim()).filter(Boolean);
+    const name = parts[0]?.replace(/^[\-–—\|;]+/, '').trim() || '';
     if (name.length < 2) return null;
-    const seriesCount = parseInt(parts[1] || '3', 10) || 3;
-    const repsDescription = parts[2] || '10-12 reps';
-    const restDescription = parts[3] || '60s';
-    const orientation = parts[4] || '';
-    return { name, seriesCount, repsDescription, restDescription, orientation };
+
+    let seriesCount = 3;
+    let repsDescription = '10-12 reps';
+    let restDescription = '60s';
+    let orientation = '';
+
+    if (parts.length > 1) {
+      seriesCount = parseInt(parts[1], 10) || 3;
+    }
+    if (parts.length > 2) {
+      repsDescription = parts[2];
+      if (!/reps|min|s|km|cada/i.test(repsDescription)) {
+        repsDescription = `${repsDescription} reps`;
+      }
+    }
+    if (parts.length > 3) {
+      restDescription = parts[3];
+    }
+    if (parts.length > 4) {
+      orientation = parts[4];
+    }
+
+    return { exerciseNumber, name, seriesCount, repsDescription, restDescription, orientation };
   }
 
   // 2. Extração para OCR / texto livre
-  let clean = line.replace(/^\d+[\.\-\)]\s*/, '').trim();
-  if (clean.length < 3) return null;
-
-  // Extrai descanso (ex: "60s", "90 seg", "1 min")
   let restDescription = '60s';
   const restMatch = clean.match(/(?:descanso|intervalo)?\s*(\d{2,3}\s*(?:s|seg|segundos)|1\s*min(?:uto)?)/i);
   if (restMatch) {
@@ -302,33 +432,40 @@ function parseExerciseDetailsFromLine(line: string): {
     clean = clean.replace(restMatch[0], ' ').trim();
   }
 
-  // Extrai séries e repetições (ex: "4x10-12", "3 x 12 a 15", "3x10")
   let seriesCount = 3;
   let repsDescription = '10-12 reps';
 
+  // Padrões de séries e repetições:
+  const endNumbersMatch = clean.match(/\b(\d+)\s+(\d{1,2}(?:\s*[-–a]\s*\d{1,2})?(?:\s*(?:reps|min|s|km|cada lado|cada perna))?)\s*$/i);
   const xPatternMatch = clean.match(/(\d+)\s*[xX]\s*([\d\s\-–a-zA-ZáéíóúÁÉÍÓÚ]+)/);
-  if (xPatternMatch) {
+  const seriesWordMatch = clean.match(/(\d+)\s*s[ée]ries?\s*(?:de\s*)?([\d\s\-–a-zA-Z]+)?/i);
+
+  if (endNumbersMatch) {
+    seriesCount = parseInt(endNumbersMatch[1], 10) || 3;
+    repsDescription = endNumbersMatch[2].trim();
+    if (!/reps|min|s|km|cada/i.test(repsDescription)) {
+      repsDescription = `${repsDescription} reps`;
+    }
+    clean = clean.replace(endNumbersMatch[0], ' ').trim();
+  } else if (xPatternMatch) {
     seriesCount = parseInt(xPatternMatch[1], 10) || 3;
     const rawReps = xPatternMatch[2].trim();
     repsDescription = rawReps.toLowerCase().includes('rep') ? rawReps : `${rawReps} reps`;
     clean = clean.replace(xPatternMatch[0], ' ').trim();
-  } else {
-    // Padrão "3 séries de 10" ou "4 series 12 reps"
-    const seriesWordMatch = clean.match(/(\d+)\s*s[ée]ries?\s*(?:de\s*)?([\d\s\-–a-zA-Z]+)?/i);
-    if (seriesWordMatch) {
-      seriesCount = parseInt(seriesWordMatch[1], 10) || 3;
-      if (seriesWordMatch[2]) {
-        const rawReps = seriesWordMatch[2].trim();
-        repsDescription = rawReps.toLowerCase().includes('rep') ? rawReps : `${rawReps} reps`;
-      }
-      clean = clean.replace(seriesWordMatch[0], ' ').trim();
+  } else if (seriesWordMatch) {
+    seriesCount = parseInt(seriesWordMatch[1], 10) || 3;
+    if (seriesWordMatch[2]) {
+      const rawReps = seriesWordMatch[2].trim();
+      repsDescription = rawReps.toLowerCase().includes('rep') ? rawReps : `${rawReps} reps`;
     }
+    clean = clean.replace(seriesWordMatch[0], ' ').trim();
   }
 
   const name = clean.replace(/[\-–—\|;]+$/, '').replace(/^[\-–—\|;]+/, '').trim();
   if (name.length < 2) return null;
 
   return {
+    exerciseNumber,
     name,
     seriesCount,
     repsDescription,
