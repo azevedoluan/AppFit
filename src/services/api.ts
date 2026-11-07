@@ -94,6 +94,21 @@ export const api = {
     }
   },
 
+  async updateProfile(userId: string, data: { name?: string; avatarUrl?: string }): Promise<User | null> {
+    try {
+      const res = await fetch(`${BASE_URL}/users/profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, ...data })
+      });
+      if (!res.ok) throw new Error('Erro ao atualizar perfil no PostgreSQL');
+      return await res.json();
+    } catch (err) {
+      console.warn('[API] Falha ao atualizar perfil no PostgreSQL:', err);
+      return null;
+    }
+  },
+
   async getWorkouts(userId: string): Promise<{
     workoutDays: WorkoutDay[];
     cycle: WorkoutCycle | null;

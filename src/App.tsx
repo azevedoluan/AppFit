@@ -39,13 +39,6 @@ import {
 export const App: React.FC = () => {
   // Current Authenticated User (Strictly Scoped)
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    // Limpeza completa para testes limpos do zero
-    if (!localStorage.getItem('appfit_database_clean_v9_pg')) {
-      wipeAllUsersDatabase();
-      localStorage.setItem('appfit_database_clean_v9_pg', 'true');
-      return null;
-    }
-
     const saved = localStorage.getItem('appfit_current_session_user');
     if (saved) {
       try {
@@ -227,6 +220,19 @@ export const App: React.FC = () => {
               setCurrentUser(canonical);
               return;
             }
+            // Sincroniza dados canônicos de perfil se vierem do banco
+            if (canonical.avatarUrl && canonical.avatarUrl !== avatarUrl) {
+              setAvatarUrl(canonical.avatarUrl);
+              saveUserAvatar(currentUser.id, canonical.avatarUrl);
+            }
+            if (canonical.name && canonical.name !== userName) {
+              setUserName(canonical.name);
+            }
+          }
+
+          // Se o usuário tem avatar local mas no PostgreSQL ainda não está salvo, persiste no banco
+          if (userAvatar && canonical && !canonical.avatarUrl) {
+            api.updateProfile(currentUser.id, { avatarUrl: userAvatar });
           }
 
           // 2. Busca treinos persistidos no PostgreSQL (PostgreSQL é a fonte autoritativa da verdade)
@@ -244,8 +250,13 @@ export const App: React.FC = () => {
               : remote.workoutDays[0].id;
             setSelectedDayId(validDay);
             isSyncingFromRemoteRef.current = false;
+          } else if (userWorkouts && userWorkouts.length > 0) {
+            // Se o usuário tem treinos cadastrados localmente que ainda não foram salvos no PostgreSQL:
+            // Persiste imediatamente no banco de dados para nunca perder!
+            console.log('[PostgreSQL Sync] Persistindo treinos locais no banco de dados...');
+            await api.saveWorkouts(currentUser.id, userWorkouts, userCycle);
           } else {
-            // Se o PostgreSQL não tem treinos (usuário novo ou excluído pelo admin), limpa o estado local
+            // Usuário novo sem nenhum treino cadastrado
             setWorkoutDays([]);
             saveUserWorkouts(currentUser.id, []);
             setSelectedDayId('');
@@ -523,11 +534,15 @@ export const App: React.FC = () => {
     }
   };
 
-  // Sync avatar to this user's storage
-  const handleUpdateAvatar = (url: string) => {
+  // Sync avatar to this user's storage and PostgreSQL database
+  const handleUpdateAvatar = async (url: string) => {
     setAvatarUrl(url);
     if (currentUser) {
       saveUserAvatar(currentUser.id, url);
+      const updatedUser = { ...currentUser, avatarUrl: url };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('appfit_current_session_user', JSON.stringify(updatedUser));
+      await api.updateProfile(currentUser.id, { avatarUrl: url });
     }
   };
 
@@ -1267,12 +1282,13 @@ export const App: React.FC = () => {
         userName={userName}
         userEmail={currentUser?.email}
         authProvider={currentUser?.provider}
-        onUpdateProfile={(name) => {
+        onUpdateProfile={async (name) => {
           setUserName(name);
           if (currentUser) {
             const updated = { ...currentUser, name };
             setCurrentUser(updated);
             localStorage.setItem('appfit_current_session_user', JSON.stringify(updated));
+            await api.updateProfile(currentUser.id, { name });
           }
         }}
         cycle={cycle}

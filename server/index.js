@@ -214,6 +214,16 @@ app.post('/api/users/sync', async (req, res) => {
         u.name = 'AppFit';
       }
 
+      // Se o usuário passou um avatarUrl ou name novo e no banco está nulo ou atualizado, persiste no PostgreSQL
+      if (avatarUrl && avatarUrl !== u.avatar_url) {
+        await pool.query("UPDATE users SET avatar_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2;", [avatarUrl, u.id]);
+        u.avatar_url = avatarUrl;
+      }
+      if (name && name.trim() && name.trim() !== u.name && !isAdmin) {
+        await pool.query("UPDATE users SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2;", [name.trim(), u.id]);
+        u.name = name.trim();
+      }
+
       return res.json({
         id: u.id,
         name: u.name,
@@ -262,6 +272,63 @@ app.post('/api/users/sync', async (req, res) => {
   } catch (err) {
     console.error('Erro ao sincronizar usuário:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Atualiza dados de perfil do usuário (nome, foto de perfil) diretamente no PostgreSQL
+app.post('/api/users/profile', async (req, res) => {
+  const { userId, name, avatarUrl } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId é obrigatório' });
+  }
+
+  try {
+    const fields = [];
+    const values = [];
+    let idx = 1;
+
+    if (name !== undefined && name !== null && name.trim()) {
+      fields.push(`name = $${idx++}`);
+      values.push(name.trim());
+    }
+
+    if (avatarUrl !== undefined && avatarUrl !== null) {
+      fields.push(`avatar_url = $${idx++}`);
+      values.push(avatarUrl);
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+
+    values.push(userId);
+    const query = `
+      UPDATE users
+      SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $${idx}
+      RETURNING id, name, email, avatar_url, auth_provider, is_email_verified, role, is_blocked, created_at;
+    `;
+    const result = await pool.query(query, values);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const u = result.rows[0];
+    bumpSyncVersion(userId);
+    res.json({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      avatarUrl: u.avatar_url,
+      provider: u.auth_provider,
+      isEmailVerified: u.is_email_verified,
+      role: u.role || 'user',
+      isBlocked: Boolean(u.is_blocked),
+      createdAt: u.created_at
+    });
+  } catch (err) {
+    console.error('Erro ao atualizar perfil do usuário:', err);
+    res.status(500).json({ error: 'Erro ao atualizar perfil no PostgreSQL' });
   }
 });
 
@@ -606,6 +673,8 @@ app.post('/api/workouts', async (req, res) => {
     let cycleId = null;
     if (cycle) {
       cycleId = `cycle-${userId}`;
+      const durWeeks = Math.max(1, Math.round(Number(cycle.durationWeeks) || 4));
+      const durMonths = Math.max(0.5, parseFloat(cycle.durationMonths) || 1.0);
       await client.query(
         `INSERT INTO workout_cycles (id, user_id, name, start_date, end_date, duration_weeks, duration_months, is_active)
          VALUES ($1, $2, 'Ciclo Regular', $3, $4, $5, $6, true)
@@ -615,7 +684,7 @@ app.post('/api/workouts', async (req, res) => {
            duration_weeks = EXCLUDED.duration_weeks,
            duration_months = EXCLUDED.duration_months,
            updated_at = CURRENT_TIMESTAMP;`,
-        [cycleId, userId, cycle.startDate || new Date(), cycle.endDate || new Date(), cycle.durationWeeks || 4, cycle.durationMonths || 1]
+        [cycleId, userId, cycle.startDate || new Date(), cycle.endDate || new Date(), durWeeks, durMonths]
       );
     }
 

@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS workout_cycles (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     duration_weeks INTEGER NOT NULL DEFAULT 4,
-    duration_months INTEGER NOT NULL DEFAULT 1,
+    duration_months NUMERIC(4,1) NOT NULL DEFAULT 1.0,
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
