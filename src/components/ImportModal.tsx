@@ -554,25 +554,25 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-400 block mb-1">Grupamento / Tipo de Treino</label>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1">Grupamento Muscular</label>
                 <select
                   value={manualCategory}
                   onChange={(e) => handleCategoryChange(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-semibold"
                 >
-                  <option value="CARDIO">🏃‍♂️ CARDIO (Aeróbico / Esteira / Bike)</option>
-                  <option value="PEITORAL">🛡️ PEITORAL (Peito)</option>
-                  <option value="COSTAS">🦅 COSTAS (Dorsal)</option>
-                  <option value="QUADRÍCEPS">🦵 QUADRÍCEPS (Pernas)</option>
-                  <option value="POSTERIOR COXA">🍗 POSTERIOR COXA</option>
-                  <option value="GLÚTEO">🍑 GLÚTEO</option>
-                  <option value="PANTURRILHAS">🦶 PANTURRILHAS</option>
-                  <option value="OMBROS">🥥 OMBROS (Deltoides)</option>
-                  <option value="BÍCEPS">💪 BÍCEPS</option>
-                  <option value="TRÍCEPS">⚡ TRÍCEPS</option>
-                  <option value="CORE">🧱 CORE (Abdômen / Prancha)</option>
-                  <option value="AQUECIMENTO">🔥 AQUECIMENTO & MOBILIDADE</option>
-                  <option value="GERAL">🎯 GERAL / FUNCIONAL</option>
+                  <option value="CARDIO">Aeróbico</option>
+                  <option value="PEITORAL">Peito</option>
+                  <option value="COSTAS">Costas</option>
+                  <option value="QUADRÍCEPS">Quadríceps</option>
+                  <option value="POSTERIOR COXA">Posterior de Coxa</option>
+                  <option value="GLÚTEO">Glúteo</option>
+                  <option value="PANTURRILHAS">Panturrilha</option>
+                  <option value="OMBROS">Ombros</option>
+                  <option value="BÍCEPS">Bíceps</option>
+                  <option value="TRÍCEPS">Tríceps</option>
+                  <option value="CORE">Abdômen</option>
+                  <option value="AQUECIMENTO">Aquecimento</option>
+                  <option value="GERAL">Geral</option>
                 </select>
               </div>
             </div>
@@ -592,13 +592,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setManualMetricUnit('kg')}
-                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center ${
                     manualMetricUnit === 'kg'
                       ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  ⚖️ kg
+                  kg
                 </button>
                 <button
                   type="button"
@@ -606,13 +606,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     setManualMetricUnit('min');
                     if (!manualReps.includes('min')) setManualReps('20 min');
                   }}
-                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center ${
                     manualMetricUnit === 'min'
                       ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  ⏱️ min
+                  min
                 </button>
                 <button
                   type="button"
@@ -620,24 +620,24 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     setManualMetricUnit('s');
                     if (!manualReps.includes('s')) setManualReps('45 s');
                   }}
-                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center ${
                     manualMetricUnit === 's'
                       ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  ⏳ seg
+                  seg
                 </button>
                 <button
                   type="button"
                   onClick={() => setManualMetricUnit('reps')}
-                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center ${
                     manualMetricUnit === 'reps'
                       ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  🔁 reps
+                  reps
                 </button>
               </div>
             </div>
