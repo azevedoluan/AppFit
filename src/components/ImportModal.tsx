@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { X, FileSpreadsheet, Image as ImageIcon, Plus, CheckCircle, AlertCircle, Sparkles, UploadCloud, Calendar, Layers } from 'lucide-react';
+import { X, FileSpreadsheet, Image as ImageIcon, Plus, CheckCircle, AlertCircle, Sparkles, UploadCloud, Calendar, Layers, Lightbulb, HelpCircle } from 'lucide-react';
 import type { WorkoutDay } from '../types/workout';
 import { parseSpreadsheet, parsePlainTextPlan, convertToAlphabeticalDivision, convertToWeeklyDivision } from '../utils/importUtils';
 import { processWorkoutImage } from '../utils/imageOcr';
+import { ImportTemplateGuideModal } from './ImportTemplateGuideModal';
 
 interface ImportModalProps {
   isOpen: boolean;
@@ -22,6 +23,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [pastedText, setPastedText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
+  const [guideDefaultTab, setGuideDefaultTab] = useState<'sheet' | 'image'>('sheet');
 
   // Manual Form State
   const [manualDivisionMode, setManualDivisionMode] = useState<'weekly' | 'alphabetical'>('weekly');
@@ -277,7 +280,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
         {/* Tab 1: Spreadsheet Upload */}
         {activeTab === 'sheet' && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <input
               type="file"
               ref={fileInputRef}
@@ -296,6 +299,24 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               <p className="text-xs text-slate-400 mt-1">
                 Suporta tabelas de treino distribuídas por Segunda, Terça, Quarta...
               </p>
+            </div>
+
+            {/* Guide & Template Link */}
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-900/60 border border-slate-800">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span className="text-xs text-slate-300 font-medium">Dúvidas sobre o formato das colunas?</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setGuideDefaultTab('sheet');
+                  setShowGuideModal(true);
+                }}
+                className="text-xs font-bold text-cyan-400 hover:text-cyan-300 underline underline-offset-2 shrink-0 transition-colors"
+              >
+                Ver Modelo & Baixar
+              </button>
             </div>
           </div>
         )}
@@ -350,6 +371,24 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 className="mt-1.5 w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs transition-colors border border-slate-700"
               >
                 Interpretar Texto e Gerar Dias de Treino
+              </button>
+            </div>
+
+            {/* Photography Guide Link */}
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-900/60 border border-slate-800">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span className="text-xs text-slate-300 font-medium">Como garantir que a IA leia a foto?</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setGuideDefaultTab('image');
+                  setShowGuideModal(true);
+                }}
+                className="text-xs font-bold text-cyan-400 hover:text-cyan-300 underline underline-offset-2 shrink-0 transition-colors"
+              >
+                Ver Dicas & Modelo
               </button>
             </div>
           </div>
@@ -570,6 +609,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             </button>
           </div>
         )}
+        {/* Modal de Guia de Modelos */}
+        <ImportTemplateGuideModal
+          isOpen={showGuideModal}
+          onClose={() => setShowGuideModal(false)}
+          defaultTab={guideDefaultTab}
+        />
       </div>
     </div>
   );

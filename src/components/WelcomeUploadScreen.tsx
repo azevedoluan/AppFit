@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Camera, FileSpreadsheet, Upload, Sparkles, CheckCircle2, AlertCircle, Eye, ArrowRight, Dumbbell, Calendar, Layers, Edit3, RefreshCw } from 'lucide-react';
+import { Camera, FileSpreadsheet, Upload, Sparkles, CheckCircle2, AlertCircle, Eye, ArrowRight, Dumbbell, Calendar, Layers, Edit3, RefreshCw, Lightbulb } from 'lucide-react';
 import type { WorkoutDay } from '../types/workout';
 import { parseSpreadsheet, parsePlainTextPlan, convertToAlphabeticalDivision, convertToWeeklyDivision } from '../utils/importUtils';
 import { processWorkoutImage } from '../utils/imageOcr';
+import { ImportTemplateGuideModal } from './ImportTemplateGuideModal';
 
 interface WelcomeUploadScreenProps {
   onWorkoutsLoaded: (days: WorkoutDay[]) => void;
@@ -24,6 +25,8 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
   const [distributionMode, setDistributionMode] = useState<'weekly' | 'alphabetical'>('weekly');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
+  const [guideDefaultTab, setGuideDefaultTab] = useState<'sheet' | 'image'>('sheet');
 
   const handleToggleDistribution = (mode: 'weekly' | 'alphabetical') => {
     if (!scannedDays) return;
@@ -257,6 +260,31 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
         </div>
       </div>
 
+      {/* Action: Ver Modelos e Dicas */}
+      <button
+        type="button"
+        onClick={() => {
+          setGuideDefaultTab('sheet');
+          setShowGuideModal(true);
+        }}
+        className="w-full p-4 rounded-3xl bg-gradient-to-r from-cyan-950/30 via-slate-900 to-teal-950/20 border border-cyan-500/30 hover:border-cyan-400/60 transition-all flex items-center justify-between group text-left shadow-lg shadow-cyan-950/20 active:scale-98"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:scale-105 transition-transform shrink-0">
+            <Lightbulb className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-xs font-extrabold text-white group-hover:text-cyan-300 transition-colors">
+              Modelos Recomendados (Planilha & Foto)
+            </h4>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Baixe a planilha modelo (.xlsx) ou veja dicas para fotos perfeitas
+            </p>
+          </div>
+        </div>
+        <ArrowRight className="w-4 h-4 text-cyan-400 group-hover:translate-x-1 transition-transform shrink-0 ml-2" />
+      </button>
+
       {/* Main Action 3: Manual Entry */}
       <div className="text-center pt-2 pb-6">
         <button
@@ -420,6 +448,13 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal Guia de Modelos (Planilha & Foto) */}
+      <ImportTemplateGuideModal
+        isOpen={showGuideModal}
+        onClose={() => setShowGuideModal(false)}
+        defaultTab={guideDefaultTab}
+      />
     </div>
   );
 };

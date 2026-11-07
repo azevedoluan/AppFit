@@ -505,3 +505,73 @@ export function exportToExcel(days: WorkoutDay[], userName = 'Luan Azevedo') {
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Plano semanal');
   XLSX.writeFile(workbook, `AppFit_Plano_Treino_${userName.replace(/\s+/g, '_')}.xlsx`);
 }
+
+/**
+ * Faz o download de uma planilha Excel modelo pré-formatada
+ * para que o usuário possa apenas preencher com seus exercícios e importar.
+ */
+export function downloadTemplateSpreadsheet(): void {
+  const rows: (string | number)[][] = [
+    ['PLANO DE TREINO — MODELO APPFIT'],
+    ['Instruções: Mantenha a linha do dia (SEGUNDA, TERÇA, etc.) e as colunas abaixo'],
+    [],
+    ['SEGUNDA — SUPERIORES A (PEITO, OMBRO E TRÍCEPS)'],
+    ['Exercício', 'Séries', 'Repetições', 'Descanso', 'Orientações'],
+    ['Supino Reto com Halteres', 3, '10-12 reps', '60-90 s', 'Escápulas retraídas e controladas'],
+    ['Crucifixo Inclinado', 3, '12-15 reps', '60 s', 'Foco no alongamento do peitoral'],
+    ['Desenvolvimento com Halteres', 3, '10-12 reps', '60 s', 'Subir até quase estender os cotovelos'],
+    ['Elevação Lateral com Halteres', 3, '12-15 reps', '45 s', 'Cotovelos levemente flexionados'],
+    ['Tríceps Corda na Polia', 3, '12-15 reps', '45 s', 'Abrir a corda no final do movimento'],
+    ['Tríceps Testa com Barra', 3, '10-12 reps', '60 s', 'Manter os braços alinhados'],
+    [],
+    ['TERÇA — INFERIORES A (QUADRÍCEPS E GLÚTEOS)'],
+    ['Exercício', 'Séries', 'Repetições', 'Descanso', 'Orientações'],
+    ['Agachamento Livre ou no Smith', 3, '8-10 reps', '90-120 s', 'Descer até 90 graus com tronco firme'],
+    ['Leg Press 45°', 3, '10-12 reps', '90 s', 'Pés alinhados na largura dos ombros'],
+    ['Cadeira Extensora', 3, '12-15 reps', '60 s', 'Segurar 1 segundo no pico de contração'],
+    ['Afundo com Halteres', 3, '10 reps cada perna', '60 s', 'Passo firme e tronco ereto'],
+    ['Elevação Pélvica com Barra', 3, '10-12 reps', '60 s', 'Contração voluntária máxima no topo'],
+    ['Panturrilha em Pé', 4, '15-20 reps', '45 s', 'Alongar bem na descida'],
+    [],
+    ['QUARTA — SUPERIORES B (COSTAS E BÍCEPS)'],
+    ['Exercício', 'Séries', 'Repetições', 'Descanso', 'Orientações'],
+    ['Puxada Alta Frontal na Polia', 3, '10-12 reps', '60-90 s', 'Puxar até o topo do peitoral'],
+    ['Remada Baixa no Triângulo', 3, '10-12 reps', '60 s', 'Apertar as escápulas no final'],
+    ['Remada Curvada com Barra', 3, '8-10 reps', '90 s', 'Coluna alinhada em 45 graus'],
+    ['Crucifixo Invertido na Máquina', 3, '12-15 reps', '45 s', 'Foco na parte posterior do ombro'],
+    ['Rosca Direta com Barra W', 3, '10-12 reps', '60 s', 'Sem balanço do corpo'],
+    ['Rosca Martelo com Halteres', 3, '10-12 reps', '45 s', 'Pegada neutra constante'],
+    [],
+    ['QUINTA — INFERIORES B (POSTERIOR DE COXA E GLÚTEOS)'],
+    ['Exercício', 'Séries', 'Repetições', 'Descanso', 'Orientações'],
+    ['Stiff com Barra ou Halteres', 3, '10-12 reps', '90 s', 'Coluna ereta e joelhos semiflexionados'],
+    ['Mesa Flexora', 3, '10-12 reps', '60 s', 'Controle na fase excêntrica'],
+    ['Cadeira Flexora', 3, '12-15 reps', '60 s', 'Movimento contínuo e cadenciado'],
+    ['Cadeira Abdutora', 3, '15-20 reps', '45 s', 'Abertura máxima com tronco inclinado'],
+    ['Panturrilha Sentado', 4, '15-20 reps', '45 s', 'Pausa de 1 segundo embaixo e em cima'],
+    [],
+    ['SEXTA — SUPERIORES C (OMBROS, CORE E BRAÇOS)'],
+    ['Exercício', 'Séries', 'Repetições', 'Descanso', 'Orientações'],
+    ['Desenvolvimento Militar', 3, '8-10 reps', '90 s', 'Tronco firme e sem arquear a lombar'],
+    ['Elevação Lateral na Polia', 3, '12-15 reps', '45 s', 'Tensão contínua do cabo'],
+    ['Face Pull na Polia Alta', 3, '12-15 reps', '45 s', 'Foco em trapézio e deltoide posterior'],
+    ['Rosca Scott na Máquina', 3, '10-12 reps', '60 s', 'Sem tirar o braço do apoio'],
+    ['Tríceps Francês com Halter', 3, '10-12 reps', '60 s', 'Cotovelos fechados'],
+    ['Prancha Abdominal', 3, '45-60 s', '45 s', 'Ativação máxima do core'],
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+
+  // Define larguras ideais de colunas
+  worksheet['!cols'] = [
+    { wch: 38 }, // Exercício / Dia
+    { wch: 10 }, // Séries
+    { wch: 22 }, // Repetições
+    { wch: 14 }, // Descanso
+    { wch: 45 }, // Orientações
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Modelo AppFit');
+  XLSX.writeFile(workbook, 'AppFit_Modelo_Planilha_Treino.xlsx');
+}
