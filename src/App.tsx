@@ -20,6 +20,7 @@ import { Sparkles, FileSpreadsheet, Timer as TimerIcon, Calendar as CalendarIcon
 import { sound } from './utils/sound';
 import { wipeAllUsersDatabase } from './utils/authStorage';
 import { api } from './services/api';
+import { initOfflineSync, drainOfflineQueue } from './utils/offlineSync';
 import {
   loadUserWorkouts,
   saveUserWorkouts,
@@ -178,6 +179,11 @@ export const App: React.FC = () => {
   const [isDbConnected, setIsDbConnected] = useState<boolean>(true);
   const lastSyncVersionRef = useRef<number>(0);
   const isSyncingFromRemoteRef = useRef<boolean>(false);
+
+  // Inicializa monitoramento e fila de sincronização offline
+  useEffect(() => {
+    initOfflineSync(() => currentUser?.id);
+  }, [currentUser?.id]);
 
   // Whenever currentUser changes, load data locally then synchronize with PostgreSQL
   useEffect(() => {
@@ -1032,6 +1038,7 @@ export const App: React.FC = () => {
     <div className="min-h-screen bg-[#060a12] text-slate-100 flex flex-col max-w-lg mx-auto relative pb-28 shadow-2xl">
       {/* Top Header com Nome, Espaço de Foto e Ciclo (Oculto se sem treino) */}
       <Header
+        userId={currentUser?.id}
         userName={userName}
         avatarUrl={avatarUrl}
         onUpdateAvatar={handleUpdateAvatar}

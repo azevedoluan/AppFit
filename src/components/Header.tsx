@@ -1,9 +1,11 @@
-import React, { useRef } from 'react';
-import { RotateCcw, MoreVertical, Dumbbell, Camera, Calendar, Clock, Shield } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { RotateCcw, MoreVertical, Dumbbell, Camera, Calendar, Clock, Shield, WifiOff, RefreshCw, CheckCircle2 } from 'lucide-react';
 import type { WorkoutCycle } from '../types/workout';
 import { formatDateBr, getDaysRemaining } from '../utils/dateUtils';
+import { subscribeToSyncStatus, type SyncStatus } from '../utils/offlineSync';
 
 interface HeaderProps {
+  userId?: string;
   userName: string;
   avatarUrl?: string;
   onUpdateAvatar: (url: string) => void;
@@ -21,6 +23,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
+  userId,
   userName,
   avatarUrl,
   onUpdateAvatar,
@@ -39,6 +42,26 @@ export const Header: React.FC<HeaderProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const percentage = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
   const daysRemaining = getDaysRemaining(cycle.endDate);
+
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>({
+    isOnline: true,
+    isSyncing: false,
+    pendingCount: 0,
+    lastSyncedAt: null
+  });
+  const [showSyncedNotice, setShowSyncedNotice] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToSyncStatus(userId || '', (status) => {
+      setSyncStatus(status);
+      if (status.lastSyncedAt && Date.now() - status.lastSyncedAt < 4000) {
+        setShowSyncedNotice(true);
+        const timer = setTimeout(() => setShowSyncedNotice(false), 3500);
+        return () => clearTimeout(timer);
+      }
+    });
+    return unsubscribe;
+  }, [userId]);
 
   const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -117,6 +140,38 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Offline & Sync Status Banner */}
+      {!syncStatus.isOnline && (
+        <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs mb-3">
+          <div className="flex items-center gap-1.5">
+            <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="font-bold">Modo Offline</span>
+            {syncStatus.pendingCount > 0 && (
+              <span className="text-[11px] text-amber-300/80">• {syncStatus.pendingCount} pendência(s)</span>
+            )}
+          </div>
+          <span className="text-[10px] text-amber-400/80 font-medium">Salvo no aparelho</span>
+        </div>
+      )}
+
+      {syncStatus.isOnline && syncStatus.isSyncing && (
+        <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs mb-3 animate-pulse">
+          <div className="flex items-center gap-1.5">
+            <RefreshCw className="w-3.5 h-3.5 text-cyan-400 shrink-0 animate-spin" />
+            <span className="font-bold">Sincronizando com o banco de dados...</span>
+          </div>
+        </div>
+      )}
+
+      {syncStatus.isOnline && !syncStatus.isSyncing && showSyncedNotice && (
+        <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs mb-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="font-bold">Alterações sincronizadas no servidor!</span>
+          </div>
+        </div>
+      )}
 
       {/* User profile card: apenas Nome e espaço para foto de perfil */}
       <div className="flex items-center justify-between mb-3">
