@@ -90,59 +90,26 @@ app.post('/api/ocr/analyze-workout', async (req, res) => {
     const base64Clean = image.includes(',') ? image.split(',')[1] : image.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Clean, 'base64');
 
-    // Pré-processamento com Sharp resiliente (failOn: 'none' tolera avisos de JPEG/câmera de smartphone e .rotate() corrige orientação EXIF)
+    // Pré-processamento avançado da imagem com Sharp:
+    // - failOn: 'none' tolera avisos de JPEG de câmeras móveis (evita erro VipsJpeg premature end)
+    // - upscale para 2400px (sem bloquear enlargement) para dar resolução ótima de caracteres ao Tesseract
+    // - escala de cinza, normalização de contraste e nitidez
     let processedBuffer = buffer;
     try {
       processedBuffer = await sharp(buffer, { failOn: 'none', failOnError: false })
-        .rotate()
-        .resize({ width: 2400, withoutEnlargement: true })
+        .resize({ width: 2400, withoutEnlargement: false })
         .grayscale()
         .normalise()
         .sharpen()
-        .toFormat('png')
         .toBuffer();
     } catch (sharpErr) {
-      console.warn('[OCR Server] Sharp ignorado, utilizando imagem original:', sharpErr.message);
+      console.warn('[OCR Server] Falha no pré-processamento Sharp, usando imagem original:', sharpErr.message);
       processedBuffer = buffer;
     }
 
     const result = await Tesseract.recognize(processedBuffer, 'por+eng');
     const rawText = result.data.text || '';
-    let days = parseWorkoutPlanFromText(rawText);
-
-    // Se o parser estrito de dias não encontrou divisões mas há texto, cria um dia com os exercícios
-    if ((!days || days.length === 0) && rawText.trim().length > 10) {
-      const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 3);
-      if (lines.length > 0) {
-        days = [{
-          id: `day-imported-${Date.now()}`,
-          dayCode: 'SEG',
-          dayName: 'Treino Importado',
-          title: 'Treino da Ficha',
-          shortLabel: 'Ficha',
-          categoryBadge: 'IMPORTADO • FICHA',
-          subtitle: `${lines.length} linhas lidas da imagem`,
-          divisionType: 'weekly',
-          exercises: lines.slice(0, 20).map((line, idx) => ({
-            id: `ex-${Date.now()}-${idx + 1}`,
-            order: idx + 1,
-            name: line.slice(0, 40),
-            category: 'GERAL',
-            seriesCount: 3,
-            repsDescription: '10-12 reps',
-            restDescription: '60s',
-            suggestedRestOptions: [45, 60, 90, 120],
-            orientation: 'Executar com postura controlada.',
-            sets: [
-              { id: `s-${idx}-1`, setNumber: 1, targetReps: '10-12', weight: 0, completed: false },
-              { id: `s-${idx}-2`, setNumber: 2, targetReps: '10-12', weight: 0, completed: false },
-              { id: `s-${idx}-3`, setNumber: 3, targetReps: '10-12', weight: 0, completed: false }
-            ],
-            isExpanded: true
-          }))
-        }];
-      }
-    }
+    const days = parseWorkoutPlanFromText(rawText);
 
     res.json({
       text: rawText,

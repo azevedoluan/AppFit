@@ -56,7 +56,7 @@ export async function processWorkoutImage(
         days = parsePlainTextPlan(backendResult.text);
       }
 
-      if (days.length > 0 || (backendResult.text && backendResult.text.trim().length > 5)) {
+      if (days.length > 0) {
         onProgress?.(100, `Leitura concluída com sucesso! ${days.length} rotinas identificadas.`);
         return {
           text: backendResult.text || '',
