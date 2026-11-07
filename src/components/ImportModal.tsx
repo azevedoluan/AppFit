@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { X, FileSpreadsheet, Image as ImageIcon, Plus, CheckCircle, AlertCircle, Sparkles, UploadCloud, Calendar, Layers, Lightbulb, HelpCircle } from 'lucide-react';
-import type { WorkoutDay } from '../types/workout';
+import { X, FileSpreadsheet, Image as ImageIcon, Plus, CheckCircle, AlertCircle, Sparkles, UploadCloud, Calendar, Layers, Lightbulb, HelpCircle, Activity } from 'lucide-react';
+import type { WorkoutDay, Exercise, MetricUnit } from '../types/workout';
 import { parseSpreadsheet, parsePlainTextPlan, convertToAlphabeticalDivision, convertToWeeklyDivision } from '../utils/importUtils';
 import { processWorkoutImage } from '../utils/imageOcr';
 import { ImportTemplateGuideModal } from './ImportTemplateGuideModal';
@@ -32,10 +32,60 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [manualTitle, setManualTitle] = useState('Superiores A');
   const [manualExerciseName, setManualExerciseName] = useState('');
   const [manualCategory, setManualCategory] = useState('PEITORAL');
-  const [manualSeries, setManualSeries] = useState(2);
+  const [manualMetricUnit, setManualMetricUnit] = useState<MetricUnit>('kg');
+  const [manualSeries, setManualSeries] = useState(3);
   const [manualReps, setManualReps] = useState('10-12 reps');
   const [manualRest, setManualRest] = useState('60-90 s');
   const [manualOrientation, setManualOrientation] = useState('');
+
+  const handleCategoryChange = (newCat: string) => {
+    setManualCategory(newCat);
+    if (newCat === 'CARDIO') {
+      setManualMetricUnit('min');
+      setManualReps('20-30 min');
+      setManualRest('30 s');
+    } else if (newCat === 'CORE') {
+      if (manualExerciseName.toLowerCase().includes('prancha')) {
+        setManualMetricUnit('s');
+        setManualReps('30-60 s');
+      } else {
+        setManualMetricUnit('reps');
+        setManualReps('15-20 reps');
+      }
+    } else {
+      setManualMetricUnit('kg');
+      if (manualReps.includes('min') || manualReps.includes(' s')) {
+        setManualReps('10-12 reps');
+      }
+      setManualRest('60-90 s');
+    }
+  };
+
+  const handleExerciseNameChange = (newName: string) => {
+    setManualExerciseName(newName);
+    const lower = newName.toLowerCase();
+    if (
+      lower.includes('esteira') ||
+      lower.includes('bicicleta') ||
+      lower.includes('bike') ||
+      lower.includes('cardio') ||
+      lower.includes('aeróbico') ||
+      lower.includes('aerobico') ||
+      lower.includes('corrida') ||
+      lower.includes('caminhada') ||
+      lower.includes('elíptico') ||
+      lower.includes('escada') ||
+      lower.includes('spinning')
+    ) {
+      setManualCategory('CARDIO');
+      setManualMetricUnit('min');
+      if (!manualReps.includes('min')) setManualReps('20-30 min');
+    } else if (lower.includes('prancha') || lower.includes('isometria')) {
+      setManualCategory('CORE');
+      setManualMetricUnit('s');
+      if (!manualReps.includes('s')) setManualReps('30-60 s');
+    }
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -157,7 +207,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           DOM: 'Domingo'
         };
 
-    const newExercise = {
+    const metricType = manualMetricUnit === 'min' || manualMetricUnit === 's' ? 'time' : manualMetricUnit === 'reps' ? 'reps' : 'kg';
+    const newExercise: Exercise = {
       id: `man-ex-${Date.now()}`,
       order: 1,
       name: manualExerciseName.trim(),
@@ -167,6 +218,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       restDescription: manualRest,
       suggestedRestOptions: [45, 60, 90, 120],
       orientation: manualOrientation || 'Execução controlada.',
+      metricType,
+      metricUnit: manualMetricUnit,
       sets: Array.from({ length: manualSeries }, (_, i) => ({
         id: `man-set-${Date.now()}-${i + 1}`,
         setNumber: i + 1,
@@ -488,36 +541,131 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               </div>
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1">Nome do Exercício</label>
+                <input
+                  type="text"
+                  value={manualExerciseName}
+                  onChange={(e) => handleExerciseNameChange(e.target.value)}
+                  placeholder="Ex: Supino Reto, Esteira ou Prancha"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1">Grupamento / Tipo de Treino</label>
+                <select
+                  value={manualCategory}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-semibold"
+                >
+                  <option value="CARDIO">🏃‍♂️ CARDIO (Aeróbico / Esteira / Bike)</option>
+                  <option value="PEITORAL">🛡️ PEITORAL (Peito)</option>
+                  <option value="COSTAS">🦅 COSTAS (Dorsal)</option>
+                  <option value="QUADRÍCEPS">🦵 QUADRÍCEPS (Pernas)</option>
+                  <option value="POSTERIOR COXA">🍗 POSTERIOR COXA</option>
+                  <option value="GLÚTEO">🍑 GLÚTEO</option>
+                  <option value="PANTURRILHAS">🦶 PANTURRILHAS</option>
+                  <option value="OMBROS">🥥 OMBROS (Deltoides)</option>
+                  <option value="BÍCEPS">💪 BÍCEPS</option>
+                  <option value="TRÍCEPS">⚡ TRÍCEPS</option>
+                  <option value="CORE">🧱 CORE (Abdômen / Prancha)</option>
+                  <option value="AQUECIMENTO">🔥 AQUECIMENTO & MOBILIDADE</option>
+                  <option value="GERAL">🎯 GERAL / FUNCIONAL</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Seletor de Unidade de Medida (Quilos, Minutos, Segundos ou Reps) */}
             <div>
-              <label className="text-[11px] font-bold text-slate-400 block mb-1">Nome do Exercício</label>
-              <input
-                type="text"
-                value={manualExerciseName}
-                onChange={(e) => setManualExerciseName(e.target.value)}
-                placeholder="Ex: Supino Reto na Máquina"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-bold text-slate-400">Unidade de Medida</label>
+                <span className="text-[10px] text-cyan-400 font-medium">
+                  {manualMetricUnit === 'kg' && 'Peso / Carga em quilos (kg)'}
+                  {manualMetricUnit === 'min' && 'Duração em minutos (min)'}
+                  {manualMetricUnit === 's' && 'Tempo em segundos (s)'}
+                  {manualMetricUnit === 'reps' && 'Apenas repetições (sem carga)'}
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setManualMetricUnit('kg')}
+                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+                    manualMetricUnit === 'kg'
+                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  ⚖️ kg
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualMetricUnit('min');
+                    if (!manualReps.includes('min')) setManualReps('20 min');
+                  }}
+                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+                    manualMetricUnit === 'min'
+                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  ⏱️ min
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualMetricUnit('s');
+                    if (!manualReps.includes('s')) setManualReps('45 s');
+                  }}
+                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+                    manualMetricUnit === 's'
+                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  ⏳ seg
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualMetricUnit('reps')}
+                  className={`py-1.5 px-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+                    manualMetricUnit === 'reps'
+                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🔁 reps
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="text-[11px] font-bold text-slate-400 block mb-1">Séries</label>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1">Séries (mín. 1)</label>
                 <input
                   type="number"
                   min="1"
-                  max="10"
+                  max="15"
                   value={manualSeries}
-                  onChange={(e) => setManualSeries(parseInt(e.target.value) || 2)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setManualSeries(isNaN(v) ? 1 : Math.max(1, v));
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
                 />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 block mb-1">Repetições</label>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1">
+                  {manualMetricUnit === 'min' ? 'Duração Alvo' : manualMetricUnit === 's' ? 'Tempo Alvo' : 'Repetições'}
+                </label>
                 <input
                   type="text"
                   value={manualReps}
                   onChange={(e) => setManualReps(e.target.value)}
-                  placeholder="10-12 reps"
+                  placeholder={manualMetricUnit === 'min' ? 'Ex: 20-30 min' : manualMetricUnit === 's' ? 'Ex: 45 s' : '10-12 reps'}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
                 />
               </div>

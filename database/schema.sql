@@ -176,6 +176,8 @@ CREATE TABLE IF NOT EXISTS exercises (
     is_optional BOOLEAN NOT NULL DEFAULT false,
     is_expanded BOOLEAN NOT NULL DEFAULT true,
     last_weight NUMERIC(6, 2) NOT NULL DEFAULT 0.00,
+    metric_type VARCHAR(16) NOT NULL DEFAULT 'kg',
+    metric_unit VARCHAR(16) NOT NULL DEFAULT 'kg',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_ex_order CHECK (order_index > 0),
@@ -250,6 +252,7 @@ CREATE TABLE IF NOT EXISTS workout_session_exercises (
     exercise_name VARCHAR(200) NOT NULL,
     completed_sets INTEGER NOT NULL DEFAULT 0,
     max_weight NUMERIC(6, 2) NOT NULL DEFAULT 0.00,
+    metric_unit VARCHAR(16) NOT NULL DEFAULT 'kg',
     order_index INTEGER NOT NULL DEFAULT 1,
     CONSTRAINT chk_session_ex_sets CHECK (completed_sets >= 0),
     CONSTRAINT chk_session_ex_weight CHECK (max_weight >= 0)
@@ -285,6 +288,7 @@ CREATE TABLE IF NOT EXISTS exercise_weight_history (
     session_id VARCHAR(64) REFERENCES workout_sessions(id) ON DELETE SET NULL,
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     weight NUMERIC(6, 2) NOT NULL,
+    metric_unit VARCHAR(16) NOT NULL DEFAULT 'kg',
     reps VARCHAR(50),
     notes VARCHAR(255),
     CONSTRAINT chk_history_weight CHECK (weight >= 0)

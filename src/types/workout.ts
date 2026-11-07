@@ -1,3 +1,6 @@
+export type MetricUnit = 'kg' | 'min' | 's' | 'reps';
+export type MetricType = 'kg' | 'time' | 'reps';
+
 export interface ExerciseSet {
   id: string;
   setNumber: number;
@@ -10,7 +13,8 @@ export interface ExerciseSet {
 export interface WeightHistoryEntry {
   id: string;
   date: string;       // YYYY-MM-DD ou ISO
-  weight: number;     // kg
+  weight: number;     // Valor numérico (kg, min, s, reps)
+  metricUnit?: MetricUnit;
   reps?: string;
   setNumber?: number;
 }
@@ -30,6 +34,8 @@ export interface Exercise {
   isOptional?: boolean;
   lastWeight?: number;
   weightHistory?: WeightHistoryEntry[];
+  metricType?: MetricType;
+  metricUnit?: MetricUnit;
 }
 
 export type DayCode = 'SEG' | 'TER' | 'QUA' | 'QUI' | 'SEX' | 'SAB' | 'DOM' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | string;
@@ -83,6 +89,7 @@ export interface CompletedWorkoutRecord {
     name: string;
     completedSets: number;
     maxWeight: number;
+    metricUnit?: MetricUnit;
   }[];
 }
 

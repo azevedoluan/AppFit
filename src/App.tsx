@@ -645,7 +645,8 @@ export const App: React.FC = () => {
       exercisesSummary: currentDay.exercises.map(e => ({
         name: e.name,
         completedSets: e.sets.filter(s => s.completed).length,
-        maxWeight: Math.max(0, ...e.sets.map(s => s.weight))
+        maxWeight: Math.max(0, ...e.sets.map(s => s.weight)),
+        metricUnit: e.metricUnit || (e.metricType === 'time' ? 'min' : (e.category === 'CARDIO' ? 'min' : 'kg'))
       }))
     };
 
@@ -790,6 +791,25 @@ export const App: React.FC = () => {
     if (currentUser) {
       api.updateSet(currentUser.id, exerciseId, setId, undefined, weight);
     }
+  };
+
+  const handleUpdateMetricUnit = (exerciseId: string, unit: 'kg' | 'min' | 's' | 'reps') => {
+    const metricType = unit === 'min' || unit === 's' ? 'time' : unit === 'reps' ? 'reps' : 'kg';
+    const updated = workoutDays.map(day => {
+      if (day.id !== selectedDayId) return day;
+      return {
+        ...day,
+        exercises: day.exercises.map(ex => {
+          if (ex.id !== exerciseId) return ex;
+          return {
+            ...ex,
+            metricType,
+            metricUnit: unit
+          };
+        })
+      };
+    });
+    updateAndSaveWorkouts(updated);
   };
 
   const handleToggleExpand = (exerciseId: string) => {
@@ -1087,6 +1107,7 @@ export const App: React.FC = () => {
                 exercise={exercise}
                 onToggleExpand={handleToggleExpand}
                 onUpdateWeight={handleUpdateWeight}
+                onUpdateMetricUnit={handleUpdateMetricUnit}
                 onToggleSet={handleToggleSet}
                 onStartRestTimer={handleStartRestTimer}
                 onAddSet={handleAddSet}

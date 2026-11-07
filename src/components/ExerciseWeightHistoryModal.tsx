@@ -78,6 +78,8 @@ export const ExerciseWeightHistoryModal: React.FC<ExerciseWeightHistoryModalProp
   const initialWeight = sortedPoints.length > 0 ? sortedPoints[0].weight : currentMaxWeight;
   const highestWeight = sortedPoints.length > 0 ? Math.max(...sortedPoints.map(p => p.weight)) : currentMaxWeight;
   const totalGain = highestWeight - initialWeight;
+  const unit = exercise.metricUnit || (exercise.metricType === 'time' ? 'min' : (exercise.category === 'CARDIO' ? 'min' : 'kg'));
+  const isTime = unit === 'min' || unit === 's';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
@@ -93,7 +95,9 @@ export const ExerciseWeightHistoryModal: React.FC<ExerciseWeightHistoryModalProp
                 <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-500/30 text-cyan-300">
                   {exercise.category}
                 </span>
-                <span className="text-[10px] text-slate-400 font-semibold">Evolução de Carga</span>
+                <span className="text-[10px] text-slate-400 font-semibold">
+                  {isTime ? 'Evolução de Duração' : 'Evolução de Carga'}
+                </span>
               </div>
               <h3 className="text-base font-extrabold text-white leading-tight mt-0.5">
                 {exercise.name}
@@ -112,16 +116,18 @@ export const ExerciseWeightHistoryModal: React.FC<ExerciseWeightHistoryModalProp
         {/* Current Stat Cards */}
         <div className="grid grid-cols-2 gap-2.5">
           <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
-            <span className="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">Carga Atual</span>
+            <span className="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">
+              {isTime ? 'Duração Atual' : 'Carga Atual'}
+            </span>
             <div className="text-2xl font-black text-cyan-300 font-mono">
-              {currentMaxWeight > 0 ? `${currentMaxWeight} kg` : 'Sem carga'}
+              {currentMaxWeight > 0 ? `${currentMaxWeight} ${unit}` : (isTime ? 'Sem tempo' : 'Sem carga')}
             </div>
           </div>
 
           <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
             <span className="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">Progressão Total</span>
             <div className={`text-2xl font-black font-mono ${totalGain > 0 ? 'text-emerald-400' : 'text-slate-300'}`}>
-              {totalGain > 0 ? `+${totalGain} kg` : totalGain === 0 ? '0 kg' : `${totalGain} kg`}
+              {totalGain > 0 ? `+${totalGain} ${unit}` : totalGain === 0 ? `0 ${unit}` : `${totalGain} ${unit}`}
             </div>
           </div>
         </div>
@@ -139,7 +145,9 @@ export const ExerciseWeightHistoryModal: React.FC<ExerciseWeightHistoryModalProp
           <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
             {sortedPoints.length === 0 ? (
               <div className="text-center py-6 text-slate-500 text-xs">
-                Nenhuma carga registrada anteriormente. Conforme você treinar, a evolução aparecerá aqui!
+                {isTime
+                  ? 'Nenhum tempo registrado anteriormente. Conforme você treinar, a evolução aparecerá aqui!'
+                  : 'Nenhuma carga registrada anteriormente. Conforme você treinar, a evolução aparecerá aqui!'}
               </div>
             ) : (
               // Display in reverse chronological order (latest on top)
@@ -169,11 +177,11 @@ export const ExerciseWeightHistoryModal: React.FC<ExerciseWeightHistoryModalProp
                             ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30'
                             : 'bg-amber-950/80 text-amber-300 border border-amber-500/30'
                         }`}>
-                          {diff > 0 ? `+${diff} kg` : `${diff} kg`}
+                          {diff > 0 ? `+${diff} ${unit}` : `${diff} ${unit}`}
                         </span>
                       )}
                       <span className="text-sm font-black text-cyan-300 font-mono">
-                        {item.weight} kg
+                        {item.weight} {unit}
                       </span>
                     </div>
                   </div>
@@ -185,7 +193,7 @@ export const ExerciseWeightHistoryModal: React.FC<ExerciseWeightHistoryModalProp
 
         {/* Notice about preservation */}
         <div className="p-3 rounded-2xl bg-cyan-950/30 border border-cyan-500/20 text-[11px] text-cyan-200/90 leading-relaxed">
-          💡 <strong>Cargas Salvas:</strong> A carga registrada é mantida permanentemente em cada exercício para os seus próximos treinos. Somente você pode alterá-la.
+          💡 <strong>Valores Salvos:</strong> Os dados registrados são mantidos permanentemente em cada exercício para os seus próximos treinos. Somente você pode alterá-los.
         </div>
 
         <button

@@ -18,6 +18,67 @@ export function detectCategory(name) {
   return 'GERAL';
 }
 
+export function detectMetricUnit(name, repsDescription = '', category = '') {
+  const n = `${name} ${category}`.toLowerCase();
+  const r = (repsDescription || '').toLowerCase();
+
+  // Cardio keywords: sempre minutos por padrão
+  if (
+    n.includes('esteira') ||
+    n.includes('bicicleta') ||
+    n.includes('bike') ||
+    n.includes('cardio') ||
+    n.includes('aeróbico') ||
+    n.includes('aerobico') ||
+    n.includes('corrida') ||
+    n.includes('caminhada') ||
+    n.includes('elíptico') ||
+    n.includes('eliptico') ||
+    n.includes('escada') ||
+    n.includes('spinning') ||
+    n.includes('remo') ||
+    n.includes('corda') ||
+    n.includes('hiit')
+  ) {
+    if (r.includes('seg') || /\b\d+\s*s\b/.test(r)) {
+      return { metricType: 'time', metricUnit: 's' };
+    }
+    return { metricType: 'time', metricUnit: 'min' };
+  }
+
+  // Core / Isometria / Prancha
+  if (
+    n.includes('prancha') ||
+    n.includes('isometria') ||
+    n.includes('isométric') ||
+    n.includes('vácuo') ||
+    n.includes('vacuo') ||
+    n.includes('wall sit') ||
+    n.includes('hollow')
+  ) {
+    if (r.includes('min') || r.includes('minuto')) {
+      return { metricType: 'time', metricUnit: 'min' };
+    }
+    return { metricType: 'time', metricUnit: 's' };
+  }
+
+  // Reps text explicitamente expressa tempo
+  if (r.includes('minuto') || /\b\d+\s*min\b/.test(r)) {
+    return { metricType: 'time', metricUnit: 'min' };
+  }
+  if (r.includes('segundo') || /\b\d+\s*s\b/.test(r) || /\b\d+\s*seg\b/.test(r)) {
+    return { metricType: 'time', metricUnit: 's' };
+  }
+
+  // Apenas repetições ou peso corporal
+  if (r.includes('apenas reps') || n.includes('peso corporal') || n.includes('sem carga')) {
+    return { metricType: 'reps', metricUnit: 'reps' };
+  }
+
+  // Musculação padrão: Quilos (kg)
+  return { metricType: 'kg', metricUnit: 'kg' };
+}
+
 function buildSets(seriesCount, repsDescription) {
   const count = Math.max(1, isNaN(seriesCount) ? 3 : seriesCount);
   return Array.from({ length: count }, (_, idx) => ({
@@ -66,13 +127,18 @@ export function parseExerciseLine(line) {
   const name = clean.replace(/[\|;—–\-\.\,]+$/, '').replace(/^[\|;—–\-\.\,]+/, '').trim();
   if (name.length < 3) return null;
 
+  const category = detectCategory(name);
+  const { metricType, metricUnit } = detectMetricUnit(name, repsDescription, category);
+
   return {
     exerciseNumber,
     name,
     seriesCount,
     repsDescription,
     restDescription,
-    category: detectCategory(name)
+    category,
+    metricType,
+    metricUnit
   };
 }
 
@@ -237,6 +303,8 @@ export function parseWorkoutPlanFromText(text) {
       suggestedRestOptions: [45, 60, 90, 120],
       orientation: 'Executar com postura controlada.',
       sets: buildSets(ex.seriesCount, ex.repsDescription),
+      metricType: ex.metricType || 'kg',
+      metricUnit: ex.metricUnit || 'kg',
       isExpanded: true
     });
   }

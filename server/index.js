@@ -4,11 +4,27 @@ import cors from 'cors';
 import { pool } from './db.js';
 import sharp from 'sharp';
 import Tesseract from 'tesseract.js';
-import { parseWorkoutPlanFromText } from './ocrParser.js';
+import { parseWorkoutPlanFromText, detectMetricUnit } from './ocrParser.js';
 import { sendVerificationCodeEmail } from './mailer.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Executa migrações automáticas de colunas para métricas (kg, min, s, reps)
+async function runAutoMigrations() {
+  try {
+    await pool.query(`
+      ALTER TABLE exercises ADD COLUMN IF NOT EXISTS metric_type VARCHAR(16) DEFAULT 'kg';
+      ALTER TABLE exercises ADD COLUMN IF NOT EXISTS metric_unit VARCHAR(16) DEFAULT 'kg';
+      ALTER TABLE workout_session_exercises ADD COLUMN IF NOT EXISTS metric_unit VARCHAR(16) DEFAULT 'kg';
+      ALTER TABLE exercise_weight_history ADD COLUMN IF NOT EXISTS metric_unit VARCHAR(16) DEFAULT 'kg';
+    `);
+    console.log('[PostgreSQL] Migrações verificadas: metric_type e metric_unit prontos.');
+  } catch (err) {
+    console.error('[PostgreSQL] Erro na verificação de migrações (não fatal):', err.message);
+  }
+}
+runAutoMigrations();
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -558,7 +574,7 @@ app.get('/api/workouts', async (req, res) => {
 
     // 4. Busca exercícios
     const exRes = await pool.query(
-      `SELECT id, workout_day_id, category, name, order_index, series_count, reps_description, rest_description, orientation, is_optional, is_expanded, last_weight 
+      `SELECT id, workout_day_id, category, name, order_index, series_count, reps_description, rest_description, orientation, is_optional, is_expanded, last_weight, metric_type, metric_unit 
        FROM exercises WHERE workout_day_id = ANY($1) ORDER BY order_index ASC;`,
       [dayIds]
     );
@@ -579,7 +595,7 @@ app.get('/api/workouts', async (req, res) => {
     let histRes = { rows: [] };
     if (exerciseIds.length > 0) {
       histRes = await pool.query(
-        `SELECT id, exercise_id, recorded_at, weight, reps, notes 
+        `SELECT id, exercise_id, recorded_at, weight, reps, notes, metric_unit 
          FROM exercise_weight_history WHERE exercise_id = ANY($1) ORDER BY recorded_at ASC;`,
         [exerciseIds]
       );
@@ -606,6 +622,7 @@ app.get('/api/workouts', async (req, res) => {
         id: h.id,
         date: h.recorded_at,
         weight: parseFloat(h.weight) || 0,
+        metricUnit: h.metric_unit || 'kg',
         reps: h.reps,
         notes: h.notes
       });
@@ -615,6 +632,10 @@ app.get('/api/workouts', async (req, res) => {
     const exByDay = new Map();
     for (const e of exRes.rows) {
       if (!exByDay.has(e.workout_day_id)) exByDay.set(e.workout_day_id, []);
+      const detected = detectMetricUnit(e.name, e.reps_description, e.category);
+      const metricType = e.metric_type || detected.metricType;
+      const metricUnit = e.metric_unit || detected.metricUnit;
+
       exByDay.get(e.workout_day_id).push({
         id: e.id,
         order: e.order_index,
@@ -628,6 +649,8 @@ app.get('/api/workouts', async (req, res) => {
         isOptional: Boolean(e.is_optional),
         isExpanded: e.is_expanded !== false,
         lastWeight: parseFloat(e.last_weight) || 0,
+        metricType,
+        metricUnit,
         sets: setsByEx.get(e.id) || [],
         weightHistory: histByEx.get(e.id) || []
       });
@@ -731,9 +754,13 @@ app.post('/api/workouts', async (req, res) => {
           const exId = ex.id || `ex-${Date.now()}-${dIdx}-${eIdx}`;
           const maxWeight = Math.max(0, ...(ex.sets?.map(s => s.weight) || [0]), ex.lastWeight || 0);
 
+          const detected = detectMetricUnit(ex.name, ex.repsDescription, ex.category);
+          const metricType = ex.metricType || detected.metricType;
+          const metricUnit = ex.metricUnit || detected.metricUnit;
+
           await client.query(
-            `INSERT INTO exercises (id, workout_day_id, category, name, order_index, series_count, reps_description, rest_description, orientation, is_optional, is_expanded, last_weight)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
+            `INSERT INTO exercises (id, workout_day_id, category, name, order_index, series_count, reps_description, rest_description, orientation, is_optional, is_expanded, last_weight, metric_type, metric_unit)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
             [
               exId,
               dayId,
@@ -746,7 +773,9 @@ app.post('/api/workouts', async (req, res) => {
               ex.orientation || '',
               Boolean(ex.isOptional),
               ex.isExpanded !== false,
-              maxWeight
+              maxWeight,
+              metricType,
+              metricUnit
             ]
           );
 
@@ -1040,20 +1069,21 @@ app.post('/api/sessions', async (req, res) => {
         const item = exercisesSummary[i];
         const exSummaryId = `sum-${sessionId}-${i}`;
         const maxW = parseFloat(item.maxWeight) || 0;
+        const exUnit = item.metricUnit || 'kg';
 
         await client.query(
-          `INSERT INTO workout_session_exercises (id, session_id, exercise_id, exercise_name, completed_sets, max_weight, order_index)
-           VALUES ($1, $2, $3, $4, $5, $6, $7);`,
-          [exSummaryId, sessionId, item.id || null, item.name, item.completedSets || 0, maxW, i + 1]
+          `INSERT INTO workout_session_exercises (id, session_id, exercise_id, exercise_name, completed_sets, max_weight, order_index, metric_unit)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+          [exSummaryId, sessionId, item.id || null, item.name, item.completedSets || 0, maxW, i + 1, exUnit]
         );
 
         // Se houve carga registrada e temos o id do exercício, grava no histórico de progressão
         if (maxW > 0 && item.id) {
           const whId = `wh-${Date.now()}-${item.id}`;
           await client.query(
-            `INSERT INTO exercise_weight_history (id, user_id, exercise_id, session_id, recorded_at, weight, reps, notes)
-             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7);`,
-            [whId, userId, item.id, sessionId, maxW, `${item.completedSets || 0} séries`, comment || null]
+            `INSERT INTO exercise_weight_history (id, user_id, exercise_id, session_id, recorded_at, weight, reps, notes, metric_unit)
+             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7, $8);`,
+            [whId, userId, item.id, sessionId, maxW, `${item.completedSets || 0} séries`, comment || null, exUnit]
           );
         }
       }
@@ -1105,7 +1135,7 @@ app.get('/api/sessions', async (req, res) => {
 
     const sessionIds = sessionsRes.rows.map(s => s.id);
     const exRes = await pool.query(
-      `SELECT session_id, exercise_id, exercise_name, completed_sets, max_weight 
+      `SELECT session_id, exercise_id, exercise_name, completed_sets, max_weight, metric_unit 
        FROM workout_session_exercises 
        WHERE session_id = ANY($1) 
        ORDER BY order_index ASC;`,
@@ -1119,7 +1149,8 @@ app.get('/api/sessions', async (req, res) => {
         id: row.exercise_id,
         name: row.exercise_name,
         completedSets: row.completed_sets,
-        maxWeight: parseFloat(row.max_weight) || 0
+        maxWeight: parseFloat(row.max_weight) || 0,
+        metricUnit: row.metric_unit || 'kg'
       });
     }
 

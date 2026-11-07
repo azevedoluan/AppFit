@@ -7,6 +7,7 @@ interface ExerciseCardProps {
   exercise: Exercise;
   onToggleExpand: (exerciseId: string) => void;
   onUpdateWeight: (exerciseId: string, setId: string, weight: number) => void;
+  onUpdateMetricUnit?: (exerciseId: string, unit: 'kg' | 'min' | 's' | 'reps') => void;
   onToggleSet: (exerciseId: string, setId: string) => void;
   onStartRestTimer: (seconds: number, exerciseName: string) => void;
   onAddSet: (exerciseId: string) => void;
@@ -20,6 +21,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   exercise,
   onToggleExpand,
   onUpdateWeight,
+  onUpdateMetricUnit,
   onToggleSet,
   onAddSet,
   onDeleteSet,
@@ -34,6 +36,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const isExpanded = exercise.isExpanded !== false;
   const allSetsCompleted = exercise.sets.length > 0 && exercise.sets.every(s => s.completed);
   const currentMaxLoad = Math.max(0, ...(exercise.sets?.map(s => s.weight) || [0]), exercise.lastWeight || 0);
+  const unit = exercise.metricUnit || (exercise.metricType === 'time' ? 'min' : (exercise.category === 'CARDIO' ? 'min' : 'kg'));
+  const isTime = unit === 'min' || unit === 's';
 
   const handleSetToggle = (setId: string) => {
     sound.playCheckSound();
@@ -99,7 +103,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               </span>
               {currentMaxLoad > 0 && (
                 <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono">
-                  {currentMaxLoad} kg
+                  {currentMaxLoad} {unit}
                 </span>
               )}
               {exercise.isOptional && (
@@ -217,11 +221,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   {/* Weight Input & Action Button (hidden in select mode to keep UI clean) */}
                   {!isSelectingSetsToDelete ? (
                     <div className="flex items-center gap-2">
-                      {/* Weight Input Box */}
+                      {/* Weight / Time Input Box */}
                       <div className="flex items-center rounded-lg bg-slate-950 border border-slate-800 px-2 py-1">
                         <input
                           type="number"
-                          step="0.5"
+                          step={isTime ? "1" : "0.5"}
                           min="0"
                           value={set.weight === 0 ? '' : set.weight}
                           placeholder="0"
@@ -229,9 +233,27 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                             const val = parseFloat(e.target.value) || 0;
                             onUpdateWeight(exercise.id, set.id, val);
                           }}
-                          className="w-12 bg-transparent text-right text-xs font-bold text-white focus:outline-none"
+                          className="w-12 bg-transparent text-right text-xs font-bold text-white focus:outline-none font-mono"
                         />
-                        <span className="text-[11px] font-semibold text-slate-400 ml-1">kg</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onUpdateMetricUnit) {
+                              const cycle: Record<string, 'kg' | 'min' | 's' | 'reps'> = {
+                                'kg': 'min',
+                                'min': 's',
+                                's': 'reps',
+                                'reps': 'kg'
+                              };
+                              onUpdateMetricUnit(exercise.id, cycle[unit] || 'kg');
+                            }
+                          }}
+                          title="Clique para alternar unidade (kg, min, s, reps)"
+                          className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 ml-1.5 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 hover:border-cyan-500/40 transition-colors uppercase"
+                        >
+                          {unit}
+                        </button>
                       </div>
 
                       {/* Complete Button (Marcar / Concluído) */}
@@ -255,7 +277,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                     </div>
                   ) : (
                     <div className="text-xs text-slate-400 font-mono pr-1">
-                      {set.weight > 0 ? `${set.weight} kg` : '-'}
+                      {set.weight > 0 ? `${set.weight} ${unit}` : '-'}
                     </div>
                   )}
                 </div>

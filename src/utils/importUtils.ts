@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { WorkoutDay, Exercise, ExerciseSet, DayCode } from '../types/workout';
+import type { WorkoutDay, Exercise, ExerciseSet, DayCode, MetricUnit, MetricType } from '../types/workout';
 
 export function parseDayCode(header: string): { code: DayCode; name: string; isAlphabetical: boolean } {
   const upper = header.toUpperCase();
@@ -92,6 +92,71 @@ function detectCategory(name: string): string {
   return 'GERAL';
 }
 
+export function detectMetricUnit(
+  name: string,
+  repsDescription = '',
+  category = ''
+): { metricType: MetricType; metricUnit: MetricUnit } {
+  const n = `${name} ${category}`.toLowerCase();
+  const r = (repsDescription || '').toLowerCase();
+
+  // Cardio keywords: sempre minutos por padrão
+  if (
+    n.includes('esteira') ||
+    n.includes('bicicleta') ||
+    n.includes('bike') ||
+    n.includes('cardio') ||
+    n.includes('aeróbico') ||
+    n.includes('aerobico') ||
+    n.includes('corrida') ||
+    n.includes('caminhada') ||
+    n.includes('elíptico') ||
+    n.includes('eliptico') ||
+    n.includes('escada') ||
+    n.includes('spinning') ||
+    n.includes('remo') ||
+    n.includes('corda') ||
+    n.includes('hiit')
+  ) {
+    if (r.includes('seg') || /\b\d+\s*s\b/.test(r)) {
+      return { metricType: 'time', metricUnit: 's' };
+    }
+    return { metricType: 'time', metricUnit: 'min' };
+  }
+
+  // Core / Isometria / Prancha
+  if (
+    n.includes('prancha') ||
+    n.includes('isometria') ||
+    n.includes('isométric') ||
+    n.includes('vácuo') ||
+    n.includes('vacuo') ||
+    n.includes('wall sit') ||
+    n.includes('hollow')
+  ) {
+    if (r.includes('min') || r.includes('minuto')) {
+      return { metricType: 'time', metricUnit: 'min' };
+    }
+    return { metricType: 'time', metricUnit: 's' };
+  }
+
+  // Reps text explicitamente expressa tempo
+  if (r.includes('minuto') || /\b\d+\s*min\b/.test(r)) {
+    return { metricType: 'time', metricUnit: 'min' };
+  }
+  if (r.includes('segundo') || /\b\d+\s*s\b/.test(r) || /\b\d+\s*seg\b/.test(r)) {
+    return { metricType: 'time', metricUnit: 's' };
+  }
+
+  // Apenas repetições ou peso corporal
+  if (r.includes('apenas reps') || n.includes('peso corporal') || n.includes('sem carga')) {
+    return { metricType: 'reps', metricUnit: 'reps' };
+  }
+
+  // Musculação padrão: Quilos (kg)
+  return { metricType: 'kg', metricUnit: 'kg' };
+}
+
 function buildSets(seriesCount: number, repsDescription: string): ExerciseSet[] {
   const count = Math.max(1, isNaN(seriesCount) ? 2 : seriesCount);
   return Array.from({ length: count }, (_, idx) => ({
@@ -163,17 +228,22 @@ export function parseSpreadsheet(data: ArrayBuffer): WorkoutDay[] {
       const restDescription = row[3] !== undefined ? String(row[3]).trim() : '60-90 s';
       const orientation = row[4] !== undefined ? String(row[4]).trim() : '';
 
+      const category = detectCategory(name);
+      const { metricType, metricUnit } = detectMetricUnit(name, repsDescription, category);
+
       const exercise: Exercise = {
         id: `ex-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         order: order++,
         name,
-        category: detectCategory(name),
+        category,
         seriesCount,
         repsDescription,
         restDescription: restDescription || '-',
         suggestedRestOptions: [45, 60, 90, 120],
         orientation: orientation || 'Executar com postura controlada.',
         sets: buildSets(seriesCount, repsDescription),
+        metricType,
+        metricUnit,
         isExpanded: true
       };
 
@@ -348,17 +418,22 @@ export function parsePlainTextPlan(text: string): WorkoutDay[] {
       order = 1;
     }
 
+    const category = detectCategory(parsedEx.name);
+    const { metricType, metricUnit } = detectMetricUnit(parsedEx.name, parsedEx.repsDescription, category);
+
     currentDay.exercises.push({
       id: `ex-${Date.now()}-${Math.random().toString(36).substring(2, 6)}-${order}`,
       order: order++,
       name: parsedEx.name,
-      category: detectCategory(parsedEx.name),
+      category,
       seriesCount: parsedEx.seriesCount,
       repsDescription: parsedEx.repsDescription,
       restDescription: parsedEx.restDescription,
       suggestedRestOptions: [45, 60, 90, 120],
       orientation: parsedEx.orientation || 'Movimento e respiração controlados.',
       sets: buildSets(parsedEx.seriesCount, parsedEx.repsDescription),
+      metricType,
+      metricUnit,
       isExpanded: true
     });
   }
@@ -484,17 +559,18 @@ export function exportToExcel(days: WorkoutDay[], userName = 'Luan Azevedo') {
 
   days.forEach(day => {
     rows.push([`${day.dayName.toUpperCase()} — ${day.title.toUpperCase()}`]);
-    rows.push(['Exercício', 'Séries', 'Repetições / duração', 'Descanso', 'Orientações', 'Última Carga (kg)']);
+    rows.push(['Exercício', 'Séries', 'Repetições / duração', 'Descanso', 'Orientações', 'Última Carga / Tempo']);
     
     day.exercises.forEach(ex => {
       const lastWeight = ex.sets.find(s => s.weight > 0)?.weight || 0;
+      const unit = ex.metricUnit || (ex.metricType === 'time' ? 'min' : 'kg');
       rows.push([
         ex.name,
         ex.seriesCount,
         ex.repsDescription,
         ex.restDescription,
         ex.orientation,
-        lastWeight
+        lastWeight > 0 ? `${lastWeight} ${unit}` : '-'
       ]);
     });
     rows.push([]); // blank line between days
