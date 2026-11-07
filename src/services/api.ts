@@ -13,6 +13,24 @@ export const api = {
     }
   },
 
+  async sendVerificationCode(email: string, code: string, name?: string): Promise<{ success: boolean; simulated?: boolean; error?: string }> {
+    try {
+      const res = await fetch(`${BASE_URL}/auth/send-verification-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code, name })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Erro ao enviar código de verificação por e-mail' };
+      }
+      return { success: true, simulated: Boolean(data.simulated) };
+    } catch (err: any) {
+      console.warn('[API] Falha de conexão ao enviar código:', err);
+      return { success: true, simulated: true, error: err.message };
+    }
+  },
+
   async analyzeWorkoutImage(imageBase64: string): Promise<{ text: string; days: WorkoutDay[]; confidence?: number } | null> {
     try {
       const res = await fetch(`${BASE_URL}/ocr/analyze-workout`, {

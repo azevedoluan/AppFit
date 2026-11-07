@@ -5,6 +5,7 @@ import { pool } from './db.js';
 import sharp from 'sharp';
 import Tesseract from 'tesseract.js';
 import { parseWorkoutPlanFromText } from './ocrParser.js';
+import { sendVerificationCodeEmail } from './mailer.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -32,6 +33,32 @@ function getSyncVersion(userId) {
   }
   return userSyncVersions.get(userId);
 }
+
+// ============================================================================
+// ============================================================================
+// 0. AUTH & EMAIL VERIFICATION
+// ============================================================================
+app.post('/api/auth/send-verification-code', async (req, res) => {
+  const { email, code, name } = req.body;
+  if (!email || !code) {
+    return res.status(400).json({ error: 'E-mail e código são obrigatórios.' });
+  }
+
+  try {
+    const result = await sendVerificationCodeEmail({ to: email, code, name });
+    if (!result.success) {
+      return res.status(500).json({ error: result.error || 'Falha ao enviar e-mail de verificação.' });
+    }
+    res.json({
+      success: true,
+      simulated: result.simulated || false,
+      message: 'Código de verificação enviado com sucesso.'
+    });
+  } catch (err) {
+    console.error('Erro na rota /api/auth/send-verification-code:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ============================================================================
 // 1. HEALTH CHECK & USERS

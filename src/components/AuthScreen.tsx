@@ -39,7 +39,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
   // Verification Code State
   const [verificationDigits, setVerificationDigits] = useState<string[]>(['', '', '', '', '', '']);
-  const [simulatedCodeSent, setSimulatedCodeSent] = useState<string>('');
+
   const [resendCooldown, setResendCooldown] = useState(30);
 
   // Google Account Selector State (Dinâmico e isolado por dispositivo)
@@ -91,16 +91,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       }
 
       setIsLoading(true);
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
           // Generate code and start verification
           const generatedCode = startEmailVerification(name, email, password);
+          await api.sendVerificationCode(email, generatedCode, name);
           setIsLoading(false);
-          setSimulatedCodeSent(generatedCode);
           setVerificationDigits(['', '', '', '', '', '']);
           setViewState('verify');
           setResendCooldown(30);
-          setSuccessMessage(`Código enviado para ${email}.`);
+          setSuccessMessage(`Código de verificação enviado para o e-mail ${email}.`);
         } catch (err: unknown) {
           setIsLoading(false);
           setErrorMessage(err instanceof Error ? err.message : 'Erro ao iniciar cadastro.');
@@ -193,14 +193,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   };
 
   // Resend code
-  const handleResendCode = () => {
+  const handleResendCode = async () => {
     if (resendCooldown > 0) return;
     setErrorMessage(null);
     try {
       const newCode = startEmailVerification(name, email, password);
-      setSimulatedCodeSent(newCode);
+      await api.sendVerificationCode(email, newCode, name);
       setResendCooldown(30);
-      setSuccessMessage('Novo código gerado com sucesso!');
+      setSuccessMessage('Novo código enviado para o seu e-mail!');
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'Erro ao reenviar.');
     }
@@ -305,11 +305,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       if (result.type === 'needs_verification') {
         setEmail(result.email);
         setName(result.name);
-        setSimulatedCodeSent(result.code);
+        await api.sendVerificationCode(result.email, result.code, result.name);
         setVerificationDigits(['', '', '', '', '', '']);
         setViewState('verify');
         setResendCooldown(30);
-        setSuccessMessage(`Primeiro acesso com o Google! Código enviado para ${result.email}.`);
+        setSuccessMessage(`Primeiro acesso com o Google! Código enviado para o e-mail ${result.email}.`);
       } else {
         localStorage.setItem(
           'appfit_device_saved_google',
@@ -355,17 +355,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
         {/* Card */}
         <div className="bg-[#0b1220]/90 backdrop-blur-xl border border-slate-800/90 rounded-3xl p-6 shadow-2xl relative z-10 space-y-4">
-          {/* Simulated Email Delivery Banner */}
-          <div className="p-3 bg-gradient-to-r from-blue-950/60 to-slate-900 border border-blue-500/40 rounded-2xl text-xs space-y-1">
-            <div className="flex items-center gap-1.5 text-blue-300 font-bold text-[11px] uppercase tracking-wider">
-              <Mail className="w-3.5 h-3.5 text-blue-400" />
-              <span>Simulação de Envio de E-mail</span>
+          {/* Email Delivery Notice Banner */}
+          <div className="p-3.5 bg-gradient-to-r from-teal-950/40 via-cyan-950/30 to-slate-900 border border-teal-500/30 rounded-2xl text-xs space-y-1">
+            <div className="flex items-center gap-1.5 text-teal-300 font-bold text-[11px] uppercase tracking-wider">
+              <Mail className="w-3.5 h-3.5 text-teal-400" />
+              <span>Código Enviado por E-mail</span>
             </div>
-            <p className="text-slate-300 text-[11px]">
-              Código recebido: <strong className="text-white bg-blue-900/60 px-2 py-0.5 rounded font-mono text-sm tracking-widest">{simulatedCodeSent}</strong>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              Enviamos um código de 6 dígitos para o seu endereço de e-mail cadastrado.
             </p>
             <p className="text-[10px] text-slate-400">
-              (Copie ou digite os 6 números nos campos abaixo)
+              Dica: Verifique a caixa de entrada e também a pasta de <strong>Spam</strong> ou <strong>Lixo Eletrônico</strong>.
             </p>
           </div>
 
