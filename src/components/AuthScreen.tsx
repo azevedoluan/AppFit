@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mail, Lock, User as UserIcon, Eye, EyeOff, Sparkles, AlertCircle, CheckCircle2, ArrowRight, ShieldCheck, RefreshCw, Trash2 } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, Eye, EyeOff, Sparkles, AlertCircle, CheckCircle2, ArrowRight, ShieldCheck, RefreshCw } from 'lucide-react';
 import type { User } from '../types/auth';
 import {
   loginAccount,
   startEmailVerification,
   verifyAndRegisterUser,
-  handleGoogleSignInRequest,
-  wipeAllUsersDatabase
+  handleGoogleSignInRequest
 } from '../utils/authStorage';
 import { api } from '../services/api';
 import { purgeAllUserDataLocally } from '../utils/userWorkoutStorage';
@@ -684,29 +683,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             )}
           </button>
         </form>
-      </div>
-
-      {/* Wipe Database Action for Testing */}
-      <div className="text-center mt-5">
-        <button
-          type="button"
-          onClick={async () => {
-            if (confirm('Tem certeza que deseja limpar todos os usuários cadastrados e reiniciar a base de dados?')) {
-              try {
-                await fetch('/api/reset-all', { method: 'POST' });
-              } catch {
-                // Ignore
-              }
-              wipeAllUsersDatabase();
-              alert('Base de dados e usuários limpa com sucesso!');
-              window.location.reload();
-            }
-          }}
-          className="text-[11px] text-slate-500 hover:text-red-400 transition-colors flex items-center justify-center gap-1.5 mx-auto py-1"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-          <span>Limpar base de usuários e reiniciar testes</span>
-        </button>
       </div>
 
       {/* Real Google Account Selection Dialog */}
