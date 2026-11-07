@@ -50,13 +50,20 @@ export async function processWorkoutImage(
     onProgress?.(35, 'Identificando dias da semana e exercícios via visão computacional...');
     const backendResult = await api.analyzeWorkoutImage(base64);
 
-    if (backendResult && backendResult.days && backendResult.days.length > 0) {
-      onProgress?.(100, `Leitura concluída com sucesso! ${backendResult.days.length} rotinas identificadas.`);
-      return {
-        text: backendResult.text,
-        days: backendResult.days,
-        confidence: backendResult.confidence
-      };
+    if (backendResult) {
+      let days = backendResult.days || [];
+      if (days.length === 0 && backendResult.text && backendResult.text.trim().length > 5) {
+        days = parsePlainTextPlan(backendResult.text);
+      }
+
+      if (days.length > 0 || (backendResult.text && backendResult.text.trim().length > 5)) {
+        onProgress?.(100, `Leitura concluída com sucesso! ${days.length} rotinas identificadas.`);
+        return {
+          text: backendResult.text || '',
+          days,
+          confidence: backendResult.confidence || 75
+        };
+      }
     }
   } catch (err) {
     console.warn('[OCR Frontend] Backend OCR indisponível, usando fallback local no navegador:', err);
