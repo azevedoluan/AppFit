@@ -148,8 +148,18 @@ export function detectMetricUnit(
     return { metricType: 'time', metricUnit: 's' };
   }
 
-  // Apenas repetições ou peso corporal
-  if (r.includes('apenas reps') || n.includes('peso corporal') || n.includes('sem carga')) {
+  // Apenas repetições ou peso corporal / execuções unilaterais sem carga
+  if (
+    r.includes('apenas reps') ||
+    r.includes('por lado') ||
+    r.includes('cada lado') ||
+    r.includes('cada perna') ||
+    r.includes('cada braço') ||
+    n.includes('peso corporal') ||
+    n.includes('sem carga') ||
+    n.includes('marcha deitada') ||
+    n.includes('estabilidade de tronco')
+  ) {
     return { metricType: 'reps', metricUnit: 'reps' };
   }
 
@@ -168,12 +178,67 @@ function buildSets(seriesCount: number, repsDescription: string): ExerciseSet[] 
   }));
 }
 
+// Sanitiza datas geradas automaticamente pelo Excel ao digitar faixas como 10-12, 12-15, 8-10 ou 1-2
+export function sanitizeExcelDateToWorkoutRange(val: any): string {
+  if (val === undefined || val === null || val === '') return '';
+  const str = String(val).trim();
+
+  // Match ISO date YYYY-MM-DD
+  const isoMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10);
+    const d = parseInt(isoMatch[3], 10);
+
+    // Em exportações do Excel, 12-15 frequentemente é convertido para 2015-12-01
+    if (y === 2015 && m === 12) return '12-15';
+    if (d < m) return `${d}-${m}`;
+    return `${m}-${d}`;
+  }
+
+  // Match Barra de Data M/D/YY ou D/M/YY
+  const slashMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (slashMatch) {
+    const p1 = parseInt(slashMatch[1], 10);
+    const p2 = parseInt(slashMatch[2], 10);
+    const y = parseInt(slashMatch[3], 10);
+    if (y === 15 || y === 2015) return '12-15';
+    if (p1 < p2) return `${p1}-${p2}`;
+    return `${p2}-${p1}`;
+  }
+
+  // Se vier como número serial float do Excel (ex: 46365.87)
+  const num = parseFloat(str);
+  if (!isNaN(num) && num > 35000 && num < 60000) {
+    const utcDays = Math.floor(num - 25569);
+    const dateInfo = new Date(utcDays * 86400 * 1000);
+    const y = dateInfo.getUTCFullYear();
+    const m = dateInfo.getUTCMonth() + 1;
+    const d = dateInfo.getUTCDate();
+    if (y === 2015 && m === 12) return '12-15';
+    if (d < m) return `${d}-${m}`;
+    return `${m}-${d}`;
+  }
+
+  return str;
+}
+
+export function parseSeriesCount(val: any): number {
+  const sanitized = sanitizeExcelDateToWorkoutRange(val);
+  const matchRange = sanitized.match(/(\d+)\s*[-–]\s*(\d+)/);
+  if (matchRange) {
+    return parseInt(matchRange[2], 10);
+  }
+  const count = parseInt(sanitized, 10);
+  return isNaN(count) || count < 1 ? 2 : count;
+}
+
 // Parse Excel Workbook or CSV
 export function parseSpreadsheet(data: ArrayBuffer): WorkoutDay[] {
-  const workbook = XLSX.read(data, { type: 'array' });
+  const workbook = XLSX.read(data, { type: 'array', raw: true });
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
-  const rows: (string | number)[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+  const rows: (string | number)[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true });
 
   const parsedDays: WorkoutDay[] = [];
   let currentDay: WorkoutDay | null = null;
@@ -223,8 +288,8 @@ export function parseSpreadsheet(data: ArrayBuffer): WorkoutDay[] {
     if (currentDay) {
       const name = firstCell;
       const seriesRaw = row[1] !== undefined ? String(row[1]).trim() : '2';
-      const seriesCount = parseInt(seriesRaw, 10) || 2;
-      const repsDescription = row[2] !== undefined ? String(row[2]).trim() : '10-12 reps';
+      const seriesCount = parseSeriesCount(seriesRaw);
+      const repsDescription = sanitizeExcelDateToWorkoutRange(row[2]) || '10-12 reps';
       const restDescription = row[3] !== undefined ? String(row[3]).trim() : '60-90 s';
       const orientation = row[4] !== undefined ? String(row[4]).trim() : '';
 
@@ -499,16 +564,54 @@ function parseExerciseDetailsFromLine(line: string): {
     return { exerciseNumber, name, seriesCount, repsDescription, restDescription, orientation };
   }
 
-  // 2. Extração para OCR / texto livre
-  let restDescription = '60s';
+  // 2. Extração para OCR / texto livre com suporte a tabelas
+  let restDescription = '60-90 s';
+  let seriesCount = 2;
+  let repsDescription = '10-12 reps';
+  let orientation = '';
+
+  // 2.1 Padrão Tabular OCR: [Nome] [Séries (1-4)] [Reps] [Descanso] [Orientações...]
+  const tabularMatch = clean.match(/^(.+?)\s+(\d{1,2}|r2|12)\s+([\d\s\-–a-zA-Z\u00C0-\u00FF\+xX]+?)\s+((?:\d{2,4}(?:\s*[-–]\s*\d{2,4})?\s*[sS58]?|[-–—]|Conforme\s+exerc[ií]cio))\s*(.*)$/i);
+  if (tabularMatch) {
+    let rawName = tabularMatch[1].trim();
+    let rawSeries = tabularMatch[2].trim().replace(/^r/i, '');
+    if (rawSeries === '12' && rawName.toLowerCase().includes('estabilidade')) {
+      rawSeries = '2';
+    }
+    let rawReps = tabularMatch[3].trim().replace(/\bmn\b|\bmia\b/i, 'min');
+    let rawRest = tabularMatch[4].trim().replace(/[58]$/, 's');
+    if (/^\d{2,4}(?:\s*[-–]\s*\d{2,4})?$/.test(rawRest)) {
+      rawRest = `${rawRest} s`;
+    }
+    orientation = tabularMatch[5]?.trim() || '';
+
+    seriesCount = parseInt(rawSeries, 10) || 2;
+    repsDescription = rawReps;
+    if (!/reps|min|s|km|cada|lado|perna|conforme/i.test(repsDescription)) {
+      repsDescription = `${repsDescription} reps`;
+    }
+    restDescription = rawRest;
+    clean = rawName;
+
+    const name = clean.replace(/[\-–—\|;]+$/, '').replace(/^[\-–—\|;]+/, '').trim();
+    if (name.length < 2) return null;
+
+    return {
+      exerciseNumber,
+      name,
+      seriesCount,
+      repsDescription,
+      restDescription,
+      orientation: orientation || 'Executar com postura controlada.'
+    };
+  }
+
+  // 2.2 Fallback para descanso explícito
   const restMatch = clean.match(/(?:descanso|intervalo)?\s*(\d{2,3}\s*(?:s|seg|segundos)|1\s*min(?:uto)?)/i);
   if (restMatch) {
     restDescription = restMatch[1].trim();
     clean = clean.replace(restMatch[0], ' ').trim();
   }
-
-  let seriesCount = 3;
-  let repsDescription = '10-12 reps';
 
   // Padrões de séries e repetições:
   const endNumbersMatch = clean.match(/\b(\d+)\s+(\d{1,2}(?:\s*[-–a]\s*\d{1,2})?(?:\s*(?:reps|min|s|km|cada lado|cada perna))?)\s*$/i);

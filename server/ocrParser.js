@@ -70,8 +70,18 @@ export function detectMetricUnit(name, repsDescription = '', category = '') {
     return { metricType: 'time', metricUnit: 's' };
   }
 
-  // Apenas repetições ou peso corporal
-  if (r.includes('apenas reps') || n.includes('peso corporal') || n.includes('sem carga')) {
+  // Apenas repetições ou peso corporal / execuções unilaterais sem carga
+  if (
+    r.includes('apenas reps') ||
+    r.includes('por lado') ||
+    r.includes('cada lado') ||
+    r.includes('cada perna') ||
+    r.includes('cada braço') ||
+    n.includes('peso corporal') ||
+    n.includes('sem carga') ||
+    n.includes('marcha deitada') ||
+    n.includes('estabilidade de tronco')
+  ) {
     return { metricType: 'reps', metricUnit: 'reps' };
   }
 
