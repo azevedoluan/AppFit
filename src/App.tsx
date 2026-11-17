@@ -20,7 +20,7 @@ import { Sparkles, FileSpreadsheet, Timer as TimerIcon, Calendar as CalendarIcon
 import { sound } from './utils/sound';
 import { wipeAllUsersDatabase } from './utils/authStorage';
 import { api } from './services/api';
-import { initOfflineSync, drainOfflineQueue } from './utils/offlineSync';
+import { initOfflineSync, drainOfflineQueue, getPendingCount } from './utils/offlineSync';
 import {
   loadUserWorkouts,
   saveUserWorkouts,
@@ -34,7 +34,10 @@ import {
   loadUserWorkoutHistory,
   saveUserWorkoutHistory,
   addUserWorkoutHistoryRecord,
-  purgeAllUserDataLocally
+  purgeAllUserDataLocally,
+  saveUserActiveSession,
+  loadUserActiveSession,
+  mergeWorkoutsPreservingLocal
 } from './utils/userWorkoutStorage';
 
 export const App: React.FC = () => {
@@ -179,6 +182,11 @@ export const App: React.FC = () => {
   const [isDbConnected, setIsDbConnected] = useState<boolean>(true);
   const lastSyncVersionRef = useRef<number>(0);
   const isSyncingFromRemoteRef = useRef<boolean>(false);
+  const isWorkoutActiveRef = useRef<boolean>(isWorkoutActive);
+  useEffect(() => {
+    isWorkoutActiveRef.current = isWorkoutActive;
+  }, [isWorkoutActive]);
+  const lastLocalMutationAtRef = useRef<number>(0);
 
   // Inicializa monitoramento e fila de sincronização offline
   useEffect(() => {
@@ -243,17 +251,22 @@ export const App: React.FC = () => {
 
           // 2. Busca treinos persistidos no PostgreSQL (PostgreSQL é a fonte autoritativa da verdade)
           const remote = await api.getWorkouts(currentUser.id);
+          const activeSession = loadUserActiveSession(currentUser.id);
+
           if (remote && remote.workoutDays && remote.workoutDays.length > 0) {
             isSyncingFromRemoteRef.current = true;
-            setWorkoutDays(remote.workoutDays);
-            saveUserWorkouts(currentUser.id, remote.workoutDays);
+            // Preserva dados locais (cargas e séries marcadas)
+            const merged = mergeWorkoutsPreservingLocal(userWorkouts, remote.workoutDays);
+            setWorkoutDays(merged);
+            saveUserWorkouts(currentUser.id, merged);
             if (remote.cycle) {
               setCycle(remote.cycle);
               saveUserCycle(currentUser.id, remote.cycle);
             }
-            const validDay = remote.workoutDays.some(d => d.id === userSelectedDay)
-              ? userSelectedDay
-              : remote.workoutDays[0].id;
+            const targetDayId = activeSession?.selectedDayId || userSelectedDay;
+            const validDay = merged.some(d => d.id === targetDayId)
+              ? targetDayId
+              : merged[0].id;
             setSelectedDayId(validDay);
             isSyncingFromRemoteRef.current = false;
           } else if (userWorkouts && userWorkouts.length > 0) {
@@ -266,6 +279,18 @@ export const App: React.FC = () => {
             setWorkoutDays([]);
             saveUserWorkouts(currentUser.id, []);
             setSelectedDayId('');
+          }
+
+          // Restaura sessão de treino ativa se existir localmente no celular
+          if (activeSession && activeSession.isWorkoutActive) {
+            setIsWorkoutActive(true);
+            setWorkoutStartedAt(activeSession.startedAt);
+            if (activeSession.selectedDayId) {
+              setSelectedDayId(activeSession.selectedDayId);
+            }
+            const startedMs = new Date(activeSession.startedAt).getTime();
+            const elapsed = Math.max(0, Math.floor((Date.now() - startedMs) / 1000));
+            setWorkoutElapsedSeconds(elapsed);
           }
 
           // 3. Busca histórico de sessões finalizadas
@@ -306,6 +331,23 @@ export const App: React.FC = () => {
 
     const pollSync = async () => {
       try {
+        // Se o treino estiver em andamento no celular, a versão local é 100% soberana!
+        // Não busca do servidor nem equaliza nada de fora para não interferir na contagem ou séries feitas.
+        if (isWorkoutActiveRef.current) {
+          return;
+        }
+
+        // Se o usuário interagiu recentemente (ex: marcou série ou mudou carga nos últimos 10s),
+        // aguarda a propagação e não substitui os dados locais.
+        if (Date.now() - lastLocalMutationAtRef.current < 10000) {
+          return;
+        }
+
+        // Se houver mutações offline pendentes de envio, também não sobrescreve
+        if (getPendingCount(currentUser.id) > 0) {
+          return;
+        }
+
         // Verifica se o usuário comum ainda existe ou se foi bloqueado/excluído pelo admin
         if (currentUser.role !== 'admin') {
           const check = await api.checkUser({ userId: currentUser.id, email: currentUser.email });
@@ -339,8 +381,12 @@ export const App: React.FC = () => {
           const remote = await api.getWorkouts(currentUser.id);
           if (remote && remote.workoutDays) {
             isSyncingFromRemoteRef.current = true;
-            setWorkoutDays(remote.workoutDays);
-            saveUserWorkouts(currentUser.id, remote.workoutDays);
+            // Equaliza com a versão salva local no celular: preserva séries feitas e cargas locais!
+            setWorkoutDays(currentDays => {
+              const merged = mergeWorkoutsPreservingLocal(currentDays, remote.workoutDays);
+              saveUserWorkouts(currentUser.id, merged);
+              return merged;
+            });
             if (remote.cycle) {
               setCycle(remote.cycle);
               saveUserCycle(currentUser.id, remote.cycle);
@@ -486,13 +532,35 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Sync workouts to this user's storage whenever modified
-  const updateAndSaveWorkouts = (newDays: WorkoutDay[]) => {
+  // Atualiza treinos localmente de forma instantânea (celular soberano)
+  // NÃO faz DELETE/INSERT no banco nem reseta IDs.
+  const saveWorkoutDaysLocally = (newDays: WorkoutDay[]) => {
+    lastLocalMutationAtRef.current = Date.now();
+    setWorkoutDays(newDays);
+    if (currentUser) {
+      saveUserWorkouts(currentUser.id, newDays);
+      if (isWorkoutActive) {
+        saveUserActiveSession(currentUser.id, {
+          isWorkoutActive: true,
+          selectedDayId,
+          startedAt: workoutStartedAt,
+          workoutElapsedSeconds
+        });
+      }
+    }
+  };
+
+  // Sync workouts to this user's storage whenever modified estruturalmente
+  const updateAndSaveWorkouts = async (newDays: WorkoutDay[]) => {
+    lastLocalMutationAtRef.current = Date.now();
     setWorkoutDays(newDays);
     if (currentUser) {
       saveUserWorkouts(currentUser.id, newDays);
       if (!isSyncingFromRemoteRef.current) {
-        api.saveWorkouts(currentUser.id, newDays, cycle);
+        const res = await api.saveWorkouts(currentUser.id, newDays, cycle);
+        if (res && (res as any).version) {
+          lastSyncVersionRef.current = Math.max(lastSyncVersionRef.current, (res as any).version);
+        }
       }
     }
   };
@@ -531,6 +599,9 @@ export const App: React.FC = () => {
     setWorkoutElapsedSeconds(0);
     setWorkoutStartedAt(null);
     setRestTimer({ isActive: false, secondsRemaining: 0, totalDuration: 0 });
+    if (currentUser) {
+      saveUserActiveSession(currentUser.id, null);
+    }
 
     const newDayId = pendingChangeDayId;
     setPendingChangeDayId(null);
@@ -558,6 +629,9 @@ export const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+      saveUserActiveSession(currentUser.id, null);
+    }
     setCurrentUser(null);
     setIsWorkoutActive(false);
   };
@@ -605,19 +679,38 @@ export const App: React.FC = () => {
         }))
       };
     });
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
+    if (currentUser) {
+      api.resetDayProgress(currentUser.id, selectedDayId).then(res => {
+        if (res && (res as any).version) {
+          lastSyncVersionRef.current = Math.max(lastSyncVersionRef.current, (res as any).version);
+        }
+      });
+    }
 
     startWorkoutSession();
   };
 
   const startWorkoutSession = () => {
+    const started = new Date().toISOString();
     setIsWorkoutActive(true);
-    setWorkoutStartedAt(new Date().toISOString());
+    setWorkoutStartedAt(started);
     setWorkoutElapsedSeconds(0);
+    if (currentUser) {
+      saveUserActiveSession(currentUser.id, {
+        isWorkoutActive: true,
+        selectedDayId,
+        startedAt: started,
+        workoutElapsedSeconds: 0
+      });
+    }
   };
 
   const handleEndWorkoutManually = () => {
     if (confirm('Deseja encerrar o treino agora?')) {
+      if (currentUser) {
+        saveUserActiveSession(currentUser.id, null);
+      }
       finishWorkoutSession();
     }
   };
@@ -625,6 +718,9 @@ export const App: React.FC = () => {
   // Finish Workout Session (Called automatically on last exercise or manually)
   const finishWorkoutSession = (explicitDays?: WorkoutDay[]) => {
     setIsWorkoutActive(false);
+    if (currentUser) {
+      saveUserActiveSession(currentUser.id, null);
+    }
     const daysToUse = explicitDays || workoutDays;
     const currentDay = daysToUse.find(d => d.id === selectedDayId) || daysToUse[0];
     if (!currentDay) return;
@@ -675,7 +771,11 @@ export const App: React.FC = () => {
     setPendingCompletionRecord(null);
 
     // Salva sessão no PostgreSQL
-    api.saveSession(finalRecord, currentUser.id);
+    api.saveSession(finalRecord, currentUser.id).then(res => {
+      if (res && (res as any).version) {
+        lastSyncVersionRef.current = Math.max(lastSyncVersionRef.current, (res as any).version);
+      }
+    });
 
     // Quando encerra o treino, zera todos os exercícios da ficha para "não feito", preservando rigorosamente as cargas e salvando no histórico de evolução
     const updated = workoutDays.map(day => {
@@ -702,7 +802,7 @@ export const App: React.FC = () => {
         })
       };
     });
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
   };
 
   const handleCloseCompletionModal = () => {
@@ -739,11 +839,15 @@ export const App: React.FC = () => {
       };
     });
 
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
 
-    // Sincroniza marcação da série no PostgreSQL
+    // Sincroniza marcação da série no PostgreSQL de forma granular (sem deletar a ficha)
     if (currentUser) {
-      api.updateSet(currentUser.id, exerciseId, setId, willBeCompleted, undefined);
+      api.updateSet(currentUser.id, exerciseId, setId, willBeCompleted, undefined).then(res => {
+        if (res && (res as any).version) {
+          lastSyncVersionRef.current = Math.max(lastSyncVersionRef.current, (res as any).version);
+        }
+      });
     }
 
     // Check if the workout just finished (all sets marked completed)
@@ -785,11 +889,15 @@ export const App: React.FC = () => {
         })
       };
     });
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
 
-    // Sincroniza carga no PostgreSQL
+    // Sincroniza carga no PostgreSQL de forma granular
     if (currentUser) {
-      api.updateSet(currentUser.id, exerciseId, setId, undefined, weight);
+      api.updateSet(currentUser.id, exerciseId, setId, undefined, weight).then(res => {
+        if (res && (res as any).version) {
+          lastSyncVersionRef.current = Math.max(lastSyncVersionRef.current, (res as any).version);
+        }
+      });
     }
   };
 
@@ -809,7 +917,7 @@ export const App: React.FC = () => {
         })
       };
     });
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
   };
 
   const handleToggleExpand = (exerciseId: string) => {
@@ -823,7 +931,7 @@ export const App: React.FC = () => {
         })
       };
     });
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
   };
 
   const handleExpandAll = () => {
@@ -834,7 +942,7 @@ export const App: React.FC = () => {
         exercises: day.exercises.map(ex => ({ ...ex, isExpanded: true }))
       };
     });
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
   };
 
   const handleCollapseAll = () => {
@@ -845,7 +953,7 @@ export const App: React.FC = () => {
         exercises: day.exercises.map(ex => ({ ...ex, isExpanded: false }))
       };
     });
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
   };
 
   const handleResetProgress = () => {
@@ -860,13 +968,17 @@ export const App: React.FC = () => {
           }))
         };
       });
-      updateAndSaveWorkouts(updated);
+      saveWorkoutDaysLocally(updated);
       setIsWorkoutActive(false);
       setWorkoutElapsedSeconds(0);
 
-      // Zera marcações no PostgreSQL
       if (currentUser) {
-        api.resetDayProgress(currentUser.id, selectedDayId);
+        saveUserActiveSession(currentUser.id, null);
+        api.resetDayProgress(currentUser.id, selectedDayId).then(res => {
+          if (res && (res as any).version) {
+            lastSyncVersionRef.current = Math.max(lastSyncVersionRef.current, (res as any).version);
+          }
+        });
       }
     }
   };
@@ -928,10 +1040,14 @@ export const App: React.FC = () => {
         })
       };
     });
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
 
     if (currentUser && createdSet) {
-      api.addSet(currentUser.id, exerciseId, createdSet);
+      api.addSet(currentUser.id, exerciseId, createdSet).then(res => {
+        if (res && (res as any).version) {
+          lastSyncVersionRef.current = Math.max(lastSyncVersionRef.current, (res as any).version);
+        }
+      });
     }
   };
 
@@ -958,10 +1074,14 @@ export const App: React.FC = () => {
         })
       };
     });
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
 
     if (currentUser) {
-      api.deleteSets(currentUser.id, exerciseId, [setId]);
+      api.deleteSets(currentUser.id, exerciseId, [setId]).then(res => {
+        if (res && (res as any).version) {
+          lastSyncVersionRef.current = Math.max(lastSyncVersionRef.current, (res as any).version);
+        }
+      });
     }
   };
 
@@ -988,10 +1108,14 @@ export const App: React.FC = () => {
         })
       };
     });
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
 
     if (currentUser) {
-      api.deleteSets(currentUser.id, exerciseId, setIds);
+      api.deleteSets(currentUser.id, exerciseId, setIds).then(res => {
+        if (res && (res as any).version) {
+          lastSyncVersionRef.current = Math.max(lastSyncVersionRef.current, (res as any).version);
+        }
+      });
     }
   };
 
@@ -1005,10 +1129,14 @@ export const App: React.FC = () => {
         exercises: filtered.map((ex, idx) => ({ ...ex, order: idx + 1 }))
       };
     });
-    updateAndSaveWorkouts(updated);
+    saveWorkoutDaysLocally(updated);
 
     if (currentUser) {
-      api.deleteExercise(currentUser.id, exerciseId, selectedDayId);
+      api.deleteExercise(currentUser.id, exerciseId, selectedDayId).then(res => {
+        if (res && (res as any).version) {
+          lastSyncVersionRef.current = Math.max(lastSyncVersionRef.current, (res as any).version);
+        }
+      });
     }
   };
 

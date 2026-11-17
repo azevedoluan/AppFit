@@ -1,6 +1,13 @@
 import type { WorkoutDay, WorkoutCycle, CompletedWorkoutRecord } from '../types/workout';
 import { calculateCycleFromDates, calculateEndDateFromWeeks } from './dateUtils';
 
+export interface UserActiveWorkoutSession {
+  isWorkoutActive: boolean;
+  selectedDayId: string;
+  startedAt: string;
+  workoutElapsedSeconds: number;
+}
+
 // Get storage keys scoped to user
 function getWorkoutsKey(userId: string): string {
   return `appfit_user_workouts_${userId}`;
@@ -16,6 +23,89 @@ function getSelectedDayKey(userId: string): string {
 
 function getAvatarKey(userId: string): string {
   return `appfit_user_avatar_${userId}`;
+}
+
+function getActiveSessionKey(userId: string): string {
+  return `appfit_active_session_${userId}`;
+}
+
+// Salva o estado da sessão de treino ativa localmente no celular
+export function saveUserActiveSession(userId: string, session: UserActiveWorkoutSession | null): void {
+  if (!userId) return;
+  try {
+    if (!session || !session.isWorkoutActive) {
+      localStorage.removeItem(getActiveSessionKey(userId));
+    } else {
+      localStorage.setItem(getActiveSessionKey(userId), JSON.stringify(session));
+    }
+  } catch {
+    // Ignore error
+  }
+}
+
+// Carrega o estado da sessão de treino ativa salva localmente no celular
+export function loadUserActiveSession(userId: string): UserActiveWorkoutSession | null {
+  if (!userId) return null;
+  try {
+    const raw = localStorage.getItem(getActiveSessionKey(userId));
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch {
+    // Ignore error
+  }
+  return null;
+}
+
+/**
+ * Equaliza a versão do servidor com a versão salva localmente no celular.
+ * Se o usuário marcou séries no celular ou digitou cargas, os dados locais
+ * NUNCA são sobrescritos com dados zerados vindos do servidor.
+ */
+export function mergeWorkoutsPreservingLocal(
+  localDays: WorkoutDay[],
+  remoteDays: WorkoutDay[]
+): WorkoutDay[] {
+  if (!remoteDays || remoteDays.length === 0) return localDays;
+  if (!localDays || localDays.length === 0) return remoteDays;
+
+  return remoteDays.map(remoteDay => {
+    const localDay = localDays.find(d => d.id === remoteDay.id || d.dayCode === remoteDay.dayCode);
+    if (!localDay) return remoteDay;
+
+    return {
+      ...remoteDay,
+      exercises: remoteDay.exercises.map(remoteEx => {
+        const localEx = localDay.exercises.find(
+          e => e.id === remoteEx.id || e.name.trim().toLowerCase() === remoteEx.name.trim().toLowerCase()
+        );
+        if (!localEx) return remoteEx;
+
+        return {
+          ...remoteEx,
+          isExpanded: localEx.isExpanded !== undefined ? localEx.isExpanded : remoteEx.isExpanded,
+          metricUnit: localEx.metricUnit || remoteEx.metricUnit,
+          metricType: localEx.metricType || remoteEx.metricType,
+          sets: remoteEx.sets.map((remoteSet, sIdx) => {
+            const localSet = localEx.sets.find(
+              s => s.id === remoteSet.id || s.setNumber === remoteSet.setNumber
+            ) || localEx.sets[sIdx];
+            if (!localSet) return remoteSet;
+
+            // Prioridade local: preserva se o usuário marcou Feito ou inseriu carga no celular
+            const completed = localSet.completed || remoteSet.completed;
+            const weight = localSet.weight > 0 ? localSet.weight : remoteSet.weight;
+
+            return {
+              ...remoteSet,
+              completed,
+              weight
+            };
+          })
+        };
+      })
+    };
+  });
 }
 
 // Load workouts for specific user
@@ -154,6 +244,7 @@ export function purgeAllUserDataLocally(userId: string, email?: string): void {
     localStorage.removeItem(getSelectedDayKey(userId));
     localStorage.removeItem(getAvatarKey(userId));
     localStorage.removeItem(getHistoryKey(userId));
+    localStorage.removeItem(getActiveSessionKey(userId));
   }
 
   // 2. Chaves com base no e-mail (caso o ID seja construído pelo e-mail)

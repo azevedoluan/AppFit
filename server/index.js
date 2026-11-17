@@ -34,12 +34,14 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const userSyncVersions = new Map();
 
 function bumpSyncVersion(userId) {
-  if (!userId) return;
+  if (!userId) return 1;
   const current = userSyncVersions.get(userId) || { version: 0, timestamp: Date.now() };
-  userSyncVersions.set(userId, {
+  const next = {
     version: current.version + 1,
     timestamp: Date.now()
-  });
+  };
+  userSyncVersions.set(userId, next);
+  return next.version;
 }
 
 function getSyncVersion(userId) {
@@ -802,8 +804,8 @@ app.post('/api/workouts', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    bumpSyncVersion(userId);
-    res.json({ success: true, message: 'Treinos salvos no PostgreSQL com sucesso!' });
+    const syncVer = bumpSyncVersion(userId);
+    res.json({ success: true, version: syncVer, message: 'Treinos salvos no PostgreSQL com sucesso!' });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Erro ao salvar treinos:', err);
@@ -853,8 +855,8 @@ app.patch('/api/workouts/set', async (req, res) => {
       }
     }
 
-    bumpSyncVersion(userId);
-    res.json({ success: true });
+    const syncVer = bumpSyncVersion(userId);
+    res.json({ success: true, version: syncVer });
   } catch (err) {
     console.error('Erro ao atualizar série:', err);
     res.status(500).json({ error: err.message });
@@ -883,8 +885,8 @@ app.post('/api/workouts/add-set', async (req, res) => {
       [exerciseId]
     );
 
-    bumpSyncVersion(userId);
-    res.json({ success: true });
+    const syncVer = bumpSyncVersion(userId);
+    res.json({ success: true, version: syncVer });
   } catch (err) {
     console.error('Erro ao adicionar série:', err);
     res.status(500).json({ error: err.message });
@@ -922,8 +924,8 @@ app.post('/api/workouts/delete-sets', async (req, res) => {
     ]);
 
     await client.query('COMMIT');
-    bumpSyncVersion(userId);
-    res.json({ success: true });
+    const syncVer = bumpSyncVersion(userId);
+    res.json({ success: true, version: syncVer });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Erro ao remover séries:', err);
@@ -961,8 +963,8 @@ app.post('/api/workouts/delete-exercise', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    bumpSyncVersion(userId);
-    res.json({ success: true });
+    const syncVer = bumpSyncVersion(userId);
+    res.json({ success: true, version: syncVer });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Erro ao remover exercício:', err);
@@ -988,8 +990,8 @@ app.post('/api/workouts/reset-day', async (req, res) => {
        WHERE exercise_id IN (SELECT id FROM exercises WHERE workout_day_id = $1);`,
       [dayId]
     );
-    bumpSyncVersion(userId);
-    res.json({ success: true });
+    const syncVer = bumpSyncVersion(userId);
+    res.json({ success: true, version: syncVer });
   } catch (err) {
     console.error('Erro ao zerar marcações do dia:', err);
     res.status(500).json({ error: err.message });
@@ -1102,8 +1104,8 @@ app.post('/api/sessions', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    bumpSyncVersion(userId);
-    res.json({ success: true, sessionId });
+    const syncVer = bumpSyncVersion(userId);
+    res.json({ success: true, sessionId, version: syncVer });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Erro ao registrar sessão de treino:', err);

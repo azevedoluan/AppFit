@@ -29,14 +29,16 @@ export const rawApi = {
     workoutDays: WorkoutDay[],
     cycle?: WorkoutCycle | null,
     divisionType?: string
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; version?: number }> {
     const res = await fetch(`${BASE_URL}/workouts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, workoutDays, cycle, divisionType }),
       signal: AbortSignal.timeout(12000)
     });
-    return res.ok;
+    if (!res.ok) return { success: false };
+    const data = await res.json().catch(() => ({}));
+    return { success: true, version: data.version };
   },
 
   async updateSet(
@@ -45,54 +47,64 @@ export const rawApi = {
     setId: string,
     completed?: boolean,
     weight?: number
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; version?: number }> {
     const res = await fetch(`${BASE_URL}/workouts/set`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, exerciseId, setId, completed, weight }),
       signal: AbortSignal.timeout(8000)
     });
-    return res.ok;
+    if (!res.ok) return { success: false };
+    const data = await res.json().catch(() => ({}));
+    return { success: true, version: data.version };
   },
 
-  async addSet(userId: string, exerciseId: string, newSet: any): Promise<boolean> {
+  async addSet(userId: string, exerciseId: string, newSet: any): Promise<{ success: boolean; version?: number }> {
     const res = await fetch(`${BASE_URL}/workouts/add-set`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, exerciseId, newSet }),
       signal: AbortSignal.timeout(8000)
     });
-    return res.ok;
+    if (!res.ok) return { success: false };
+    const data = await res.json().catch(() => ({}));
+    return { success: true, version: data.version };
   },
 
-  async deleteSets(userId: string, exerciseId: string, setIds: string[]): Promise<boolean> {
+  async deleteSets(userId: string, exerciseId: string, setIds: string[]): Promise<{ success: boolean; version?: number }> {
     const res = await fetch(`${BASE_URL}/workouts/delete-sets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, exerciseId, setIds }),
       signal: AbortSignal.timeout(8000)
     });
-    return res.ok;
+    if (!res.ok) return { success: false };
+    const data = await res.json().catch(() => ({}));
+    return { success: true, version: data.version };
   },
 
-  async deleteExercise(userId: string, exerciseId: string, workoutDayId?: string): Promise<boolean> {
+  async deleteExercise(userId: string, exerciseId: string, workoutDayId?: string): Promise<{ success: boolean; version?: number }> {
     const res = await fetch(`${BASE_URL}/workouts/delete-exercise`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, exerciseId, workoutDayId }),
       signal: AbortSignal.timeout(8000)
     });
-    return res.ok;
+    if (!res.ok) return { success: false };
+    const data = await res.json().catch(() => ({}));
+    return { success: true, version: data.version };
   },
 
-  async resetDayProgress(userId: string, dayId: string): Promise<boolean> {
+  async resetDayProgress(userId: string, dayId: string): Promise<{ success: boolean; version?: number }> {
     const res = await fetch(`${BASE_URL}/workouts/reset-day`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, dayId }),
       signal: AbortSignal.timeout(8000)
     });
-    return res.ok;
+    if (!res.ok) return { success: false };
+    const data = await res.json().catch(() => ({}));
+    return { success: true, version: data.version };
   },
 
   async clearAllWorkouts(userId: string): Promise<boolean> {
@@ -103,14 +115,16 @@ export const rawApi = {
     return res.ok;
   },
 
-  async saveSession(record: CompletedWorkoutRecord, userId: string): Promise<boolean> {
+  async saveSession(record: CompletedWorkoutRecord, userId: string): Promise<{ success: boolean; version?: number }> {
     const res = await fetch(`${BASE_URL}/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...record, userId }),
       signal: AbortSignal.timeout(10000)
     });
-    return res.ok;
+    if (!res.ok) return { success: false };
+    const data = await res.json().catch(() => ({}));
+    return { success: true, version: data.version };
   }
 };
 
@@ -118,19 +132,19 @@ export const rawApi = {
 registerRawApiExecutor(async (type, userId, payload) => {
   switch (type) {
     case 'saveWorkouts':
-      return await rawApi.saveWorkouts(userId, payload.workoutDays, payload.cycle, payload.divisionType);
+      return (await rawApi.saveWorkouts(userId, payload.workoutDays, payload.cycle, payload.divisionType)).success;
     case 'saveSession':
-      return await rawApi.saveSession(payload.record || payload, userId);
+      return (await rawApi.saveSession(payload.record || payload, userId)).success;
     case 'updateSet':
-      return await rawApi.updateSet(userId, payload.exerciseId, payload.setId, payload.completed, payload.weight);
+      return (await rawApi.updateSet(userId, payload.exerciseId, payload.setId, payload.completed, payload.weight)).success;
     case 'addSet':
-      return await rawApi.addSet(userId, payload.exerciseId, payload.newSet);
+      return (await rawApi.addSet(userId, payload.exerciseId, payload.newSet)).success;
     case 'deleteSets':
-      return await rawApi.deleteSets(userId, payload.exerciseId, payload.setIds);
+      return (await rawApi.deleteSets(userId, payload.exerciseId, payload.setIds)).success;
     case 'deleteExercise':
-      return await rawApi.deleteExercise(userId, payload.exerciseId, payload.workoutDayId);
+      return (await rawApi.deleteExercise(userId, payload.exerciseId, payload.workoutDayId)).success;
     case 'resetDayProgress':
-      return await rawApi.resetDayProgress(userId, payload.dayId);
+      return (await rawApi.resetDayProgress(userId, payload.dayId)).success;
     case 'clearAllWorkouts':
       return await rawApi.clearAllWorkouts(userId);
     case 'updateProfile':
@@ -265,21 +279,21 @@ export const api = {
     workoutDays: WorkoutDay[],
     cycle?: WorkoutCycle | null,
     divisionType?: string
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; version?: number }> {
     if (!isDeviceOnline()) {
       enqueueOfflineMutation(userId, 'saveWorkouts', { workoutDays, cycle, divisionType });
-      return true;
+      return { success: true };
     }
     try {
-      const ok = await rawApi.saveWorkouts(userId, workoutDays, cycle, divisionType);
-      if (!ok) {
+      const res = await rawApi.saveWorkouts(userId, workoutDays, cycle, divisionType);
+      if (!res.success) {
         enqueueOfflineMutation(userId, 'saveWorkouts', { workoutDays, cycle, divisionType });
       }
-      return true;
+      return res;
     } catch (err) {
       console.warn('[API] Falha de conexão ao salvar treinos. Enfileirando offline:', err);
       enqueueOfflineMutation(userId, 'saveWorkouts', { workoutDays, cycle, divisionType });
-      return true;
+      return { success: true };
     }
   },
 
@@ -289,93 +303,93 @@ export const api = {
     setId: string,
     completed?: boolean,
     weight?: number
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; version?: number }> {
     if (!isDeviceOnline()) {
       enqueueOfflineMutation(userId, 'updateSet', { exerciseId, setId, completed, weight });
-      return true;
+      return { success: true };
     }
     try {
-      const ok = await rawApi.updateSet(userId, exerciseId, setId, completed, weight);
-      if (!ok) {
+      const res = await rawApi.updateSet(userId, exerciseId, setId, completed, weight);
+      if (!res.success) {
         enqueueOfflineMutation(userId, 'updateSet', { exerciseId, setId, completed, weight });
       }
-      return true;
+      return res;
     } catch (err) {
       console.warn('[API] Falha de conexão ao atualizar série. Enfileirando offline:', err);
       enqueueOfflineMutation(userId, 'updateSet', { exerciseId, setId, completed, weight });
-      return true;
+      return { success: true };
     }
   },
 
-  async addSet(userId: string, exerciseId: string, newSet: any): Promise<boolean> {
+  async addSet(userId: string, exerciseId: string, newSet: any): Promise<{ success: boolean; version?: number }> {
     if (!isDeviceOnline()) {
       enqueueOfflineMutation(userId, 'addSet', { exerciseId, newSet });
-      return true;
+      return { success: true };
     }
     try {
-      const ok = await rawApi.addSet(userId, exerciseId, newSet);
-      if (!ok) {
+      const res = await rawApi.addSet(userId, exerciseId, newSet);
+      if (!res.success) {
         enqueueOfflineMutation(userId, 'addSet', { exerciseId, newSet });
       }
-      return true;
+      return res;
     } catch (err) {
       console.warn('[API] Falha de conexão ao adicionar série. Enfileirando offline:', err);
       enqueueOfflineMutation(userId, 'addSet', { exerciseId, newSet });
-      return true;
+      return { success: true };
     }
   },
 
-  async deleteSets(userId: string, exerciseId: string, setIds: string[]): Promise<boolean> {
+  async deleteSets(userId: string, exerciseId: string, setIds: string[]): Promise<{ success: boolean; version?: number }> {
     if (!isDeviceOnline()) {
       enqueueOfflineMutation(userId, 'deleteSets', { exerciseId, setIds });
-      return true;
+      return { success: true };
     }
     try {
-      const ok = await rawApi.deleteSets(userId, exerciseId, setIds);
-      if (!ok) {
+      const res = await rawApi.deleteSets(userId, exerciseId, setIds);
+      if (!res.success) {
         enqueueOfflineMutation(userId, 'deleteSets', { exerciseId, setIds });
       }
-      return true;
+      return res;
     } catch (err) {
       console.warn('[API] Falha de conexão ao remover séries. Enfileirando offline:', err);
       enqueueOfflineMutation(userId, 'deleteSets', { exerciseId, setIds });
-      return true;
+      return { success: true };
     }
   },
 
-  async deleteExercise(userId: string, exerciseId: string, workoutDayId?: string): Promise<boolean> {
+  async deleteExercise(userId: string, exerciseId: string, workoutDayId?: string): Promise<{ success: boolean; version?: number }> {
     if (!isDeviceOnline()) {
       enqueueOfflineMutation(userId, 'deleteExercise', { exerciseId, workoutDayId });
-      return true;
+      return { success: true };
     }
     try {
-      const ok = await rawApi.deleteExercise(userId, exerciseId, workoutDayId);
-      if (!ok) {
+      const res = await rawApi.deleteExercise(userId, exerciseId, workoutDayId);
+      if (!res.success) {
         enqueueOfflineMutation(userId, 'deleteExercise', { exerciseId, workoutDayId });
       }
-      return true;
+      return res;
     } catch (err) {
       console.warn('[API] Falha de conexão ao remover exercício. Enfileirando offline:', err);
       enqueueOfflineMutation(userId, 'deleteExercise', { exerciseId, workoutDayId });
-      return true;
+      return { success: true };
     }
   },
 
-  async resetDayProgress(userId: string, dayId: string): Promise<boolean> {
+  async resetDayProgress(userId: string, dayId: string): Promise<{ success: boolean; version?: number }> {
     if (!isDeviceOnline()) {
       enqueueOfflineMutation(userId, 'resetDayProgress', { dayId });
-      return true;
+      return { success: true };
     }
     try {
-      const ok = await rawApi.resetDayProgress(userId, dayId);
-      if (!ok) {
+      const res = await rawApi.resetDayProgress(userId, dayId);
+      if (!res.success) {
         enqueueOfflineMutation(userId, 'resetDayProgress', { dayId });
       }
-      return true;
+      return res;
     } catch (err) {
       console.warn('[API] Falha de conexão ao resetar dia. Enfileirando offline:', err);
       enqueueOfflineMutation(userId, 'resetDayProgress', { dayId });
-      return true;
+      return { success: true };
     }
   },
 
@@ -397,21 +411,21 @@ export const api = {
     }
   },
 
-  async saveSession(record: CompletedWorkoutRecord, userId: string): Promise<boolean> {
+  async saveSession(record: CompletedWorkoutRecord, userId: string): Promise<{ success: boolean; version?: number }> {
     if (!isDeviceOnline()) {
       enqueueOfflineMutation(userId, 'saveSession', { record });
-      return true;
+      return { success: true };
     }
     try {
-      const ok = await rawApi.saveSession(record, userId);
-      if (!ok) {
+      const res = await rawApi.saveSession(record, userId);
+      if (!res.success) {
         enqueueOfflineMutation(userId, 'saveSession', { record });
       }
-      return true;
+      return res;
     } catch (err) {
       console.warn('[API] Falha de conexão ao salvar sessão de treino. Enfileirando offline:', err);
       enqueueOfflineMutation(userId, 'saveSession', { record });
-      return true;
+      return { success: true };
     }
   },
 
