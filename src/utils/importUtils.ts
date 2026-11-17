@@ -141,7 +141,7 @@ export function detectMetricUnit(
   }
 
   // Reps text explicitamente expressa tempo
-  if (r.includes('minuto') || /\b\d+\s*min\b/.test(r)) {
+  if (r.includes('minuto') || /\b\d+\s*(?:min|mn|mia)\b/.test(r)) {
     return { metricType: 'time', metricUnit: 'min' };
   }
   if (r.includes('segundo') || /\b\d+\s*s\b/.test(r) || /\b\d+\s*seg\b/.test(r)) {
@@ -235,7 +235,7 @@ export function parseSeriesCount(val: any): number {
 
 // Parse Excel Workbook or CSV
 export function parseSpreadsheet(data: ArrayBuffer): WorkoutDay[] {
-  const workbook = XLSX.read(data, { type: 'array', raw: true });
+  const workbook = XLSX.read(data, { type: 'array', raw: true, codepage: 65001 });
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   const rows: (string | number)[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true });

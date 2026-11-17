@@ -94,7 +94,7 @@ function detectMetricUnit(name, repsDescription = "", category = "") {
     }
     return { metricType: "time", metricUnit: "s" };
   }
-  if (r.includes("minuto") || /\b\d+\s*min\b/.test(r)) {
+  if (r.includes("minuto") || /\b\d+\s*(?:min|mn|mia)\b/.test(r)) {
     return { metricType: "time", metricUnit: "min" };
   }
   if (r.includes("segundo") || /\b\d+\s*s\b/.test(r) || /\b\d+\s*seg\b/.test(r)) {
@@ -159,7 +159,7 @@ function parseSeriesCount(val) {
   return isNaN(count) || count < 1 ? 2 : count;
 }
 function parseSpreadsheet(data) {
-  const workbook = XLSX.read(data, { type: "array", raw: true });
+  const workbook = XLSX.read(data, { type: "array", raw: true, codepage: 65001 });
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true });

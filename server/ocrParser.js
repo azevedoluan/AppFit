@@ -63,7 +63,7 @@ export function detectMetricUnit(name, repsDescription = '', category = '') {
   }
 
   // Reps text explicitamente expressa tempo
-  if (r.includes('minuto') || /\b\d+\s*min\b/.test(r)) {
+  if (r.includes('minuto') || /\b\d+\s*(?:min|mn|mia)\b/.test(r)) {
     return { metricType: 'time', metricUnit: 'min' };
   }
   if (r.includes('segundo') || /\b\d+\s*s\b/.test(r) || /\b\d+\s*seg\b/.test(r)) {
@@ -105,10 +105,10 @@ export function parseExerciseLine(line) {
     return null;
   }
 
-  let clean = line.replace(/^[^\w\s]*\s*/, '').trim();
+  let clean = line.replace(/^[^ws]*s*/, '').trim();
 
   // Detecta número inicial do exercício (ex: "1 ", "1. ", "02 - ", "3) ")
-  const numMatch = clean.match(/^(\d+)[\.\-\)\s]+\s*/);
+  const numMatch = clean.match(/^(d+)[.-)s]+s*/);
   const exerciseNumber = numMatch ? parseInt(numMatch[1], 10) : null;
   if (numMatch) {
     clean = clean.replace(numMatch[0], '').trim();
@@ -116,25 +116,60 @@ export function parseExerciseLine(line) {
 
   if (clean.length < 3) return null;
 
-  let seriesCount = 3;
+  let seriesCount = 2;
   let repsDescription = '10-12 reps';
-  let restDescription = '60s';
+  let restDescription = '60-90 s';
+  let orientation = '';
 
-  // Padrões de séries e repetições
-  const match = clean.match(/\|\s*(\d+)\s*\|\s*([\d\s\-–a-zA-Z]+)/) ||
-                clean.match(/(\d+)\s*[xX]\s*([\d\s\-–a-zA-Z]+)/) ||
-                clean.match(/\b(\d+)\s+(\d{1,2}(?:\s*[-–a]\s*\d{1,2})?(?:\s*(?:reps|min|s|km|cada lado|cada perna))?)\s*$/i);
+  // 1. Padrão Tabular OCR: [Nome] [Séries (1-4)] [Reps] [Descanso] [Orientações...]
+  const tabularMatch = clean.match(/^(.+?)s+(d{1,2}|r2|12)s+([ds-–a-zA-ZÀ-ÿ+xX]+?)s+((?:d{2,4}(?:s*[-–]s*d{2,4})?s*[sS58]?|[-–—]|Conformes+exerc[ií]cio))s*(.*)$/i);
+  if (tabularMatch) {
+    let rawName = tabularMatch[1].trim();
+    let rawSeries = tabularMatch[2].trim().replace(/^r/i, '');
+    if (rawSeries === '12' && rawName.toLowerCase().includes('estabilidade')) {
+      rawSeries = '2';
+    }
+    let rawReps = tabularMatch[3].trim().replace(/mn|mia/i, 'min');
+    let rawRest = tabularMatch[4].trim().replace(/[58]$/, 's');
+    if (/^d{2,4}(?:s*[-–]s*d{2,4})?$/.test(rawRest)) {
+      rawRest = `${rawRest} s`;
+    }
+    orientation = tabularMatch[5]?.trim() || '';
 
-  if (match) {
-    seriesCount = parseInt(match[1], 10) || 3;
-    repsDescription = match[2].trim();
-    if (!/reps|min|s|km|cada/i.test(repsDescription)) {
+    seriesCount = parseInt(rawSeries, 10) || 2;
+    repsDescription = rawReps;
+    if (!/reps|min|s|km|cada|lado|perna|conforme/i.test(repsDescription)) {
       repsDescription = `${repsDescription} reps`;
     }
-    clean = clean.replace(match[0], '').trim();
+    restDescription = rawRest;
+    clean = rawName;
+  } else {
+    // 2. Padrão cardio sem descanso
+    const cardioMatch = clean.match(/^(.+?)s+(d{1,2})s+(d+[-–ds]*(?:min|mn|mia|reps|s)?)s*(.*)$/i);
+    if (cardioMatch) {
+      clean = cardioMatch[1].trim();
+      seriesCount = parseInt(cardioMatch[2], 10) || 1;
+      repsDescription = cardioMatch[3].trim().replace(/mn|mia/i, 'min');
+      restDescription = '-';
+      orientation = cardioMatch[4]?.trim() || '';
+    } else {
+      // 3. Padrões alternativos de séries e repetições
+      const match = clean.match(/|s*(d+)s*|s*([ds-–a-zA-Z]+)/) ||
+                    clean.match(/(d+)s*[xX]s*([ds-–a-zA-Z]+)/) ||
+                    clean.match(/(d+)s+(d{1,2}(?:s*[-–a]s*d{1,2})?(?:s*(?:reps|min|s|km|cada lado|cada perna))?)s*$/i);
+
+      if (match) {
+        seriesCount = parseInt(match[1], 10) || 2;
+        repsDescription = match[2].trim();
+        if (!/reps|min|s|km|cada/i.test(repsDescription)) {
+          repsDescription = `${repsDescription} reps`;
+        }
+        clean = clean.replace(match[0], '').trim();
+      }
+    }
   }
 
-  const name = clean.replace(/[\|;—–\-\.\,]+$/, '').replace(/^[\|;—–\-\.\,]+/, '').trim();
+  const name = clean.replace(/[|;—–-.,]+$/, '').replace(/^[|;—–-.,]+/, '').trim();
   if (name.length < 3) return null;
 
   const category = detectCategory(name);
@@ -146,6 +181,7 @@ export function parseExerciseLine(line) {
     seriesCount,
     repsDescription,
     restDescription,
+    orientation: orientation || 'Executar com postura controlada.',
     category,
     metricType,
     metricUnit
