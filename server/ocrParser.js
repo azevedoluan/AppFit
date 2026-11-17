@@ -10,26 +10,30 @@ export function detectCategory(name) {
   if (n.includes('panturrilha')) return 'PANTURRILHAS';
   if (n.includes('supino') || n.includes('crucifixo') || n.includes('peitoral')) return 'PEITORAL';
   if (n.includes('remada') || n.includes('puxada') || n.includes('dorsal') || n.includes('face pull')) return 'COSTAS';
-  if (n.includes('elevação lateral') || n.includes('elevacao lateral') || n.includes('desenvolvimento') || n.includes('ombro')) return 'OMBROS';
+  if (n.includes('elevação lateral') || n.includes('elevacao lateral') || n.includes('desenvolvimento') || n.includes('ombro') || n.includes('deltoide')) return 'OMBROS';
   if (n.includes('bíceps') || n.includes('biceps') || n.includes('rosca')) return 'BÍCEPS';
-  if (n.includes('tríceps') || n.includes('triceps')) return 'TRÍCEPS';
-  if (n.includes('abdominal') || n.includes('prancha') || n.includes('dead bug') || n.includes('pallof') || n.includes('core')) return 'CORE';
-  if (n.includes('esteira') || n.includes('bicicleta') || n.includes('caminhada') || n.includes('aeróbico') || n.includes('cardio')) return 'CARDIO';
+  if (n.includes('tríceps') || n.includes('triceps') || n.includes('testa') || n.includes('francês') || n.includes('frances')) return 'TRÍCEPS';
+  if (n.includes('abdominal') || n.includes('prancha') || n.includes('infra') || n.includes('supra') || n.includes('obliquo') || n.includes('core') || n.includes('bracing') || n.includes('estabilidade')) return 'CORE';
+  if (n.includes('esteira') || n.includes('bicicleta') || n.includes('bike') || n.includes('cardio') || n.includes('aeróbico') || n.includes('aerobico') || n.includes('corrida') || n.includes('caminhada') || n.includes('elíptico') || n.includes('eliptico') || n.includes('escada') || n.includes('spinning') || n.includes('remo')) return 'CARDIO';
   return 'GERAL';
 }
 
 export function detectMetricUnit(name, repsDescription = '', category = '') {
-  const n = `${name} ${category}`.toLowerCase();
+  const n = (name || '').toLowerCase();
   const r = (repsDescription || '').toLowerCase();
 
-  // Cardio keywords: sempre minutos por padrão
+  // Cardio / Aquecimento / Aeróbico
   if (
     n.includes('esteira') ||
     n.includes('bicicleta') ||
+    n.includes('tiocieta') ||
     n.includes('bike') ||
     n.includes('cardio') ||
     n.includes('aeróbico') ||
     n.includes('aerobico') ||
+    n.includes('aerótico') ||
+    n.includes('aeróbtico') ||
+    n.includes('agrdtico') ||
     n.includes('corrida') ||
     n.includes('caminhada') ||
     n.includes('elíptico') ||
@@ -38,6 +42,8 @@ export function detectMetricUnit(name, repsDescription = '', category = '') {
     n.includes('spinning') ||
     n.includes('remo') ||
     n.includes('corda') ||
+    n.includes('aquec') ||
+    n.includes('mobilidade') ||
     n.includes('hiit')
   ) {
     if (r.includes('seg') || /\b\d+\s*s\b/.test(r)) {
@@ -90,7 +96,7 @@ export function detectMetricUnit(name, repsDescription = '', category = '') {
 }
 
 function buildSets(seriesCount, repsDescription) {
-  const count = Math.max(1, isNaN(seriesCount) ? 3 : seriesCount);
+  const count = Math.max(1, isNaN(seriesCount) ? 2 : seriesCount);
   return Array.from({ length: count }, (_, idx) => ({
     id: `set-${Date.now()}-${Math.random().toString(36).substring(2, 6)}-${idx + 1}`,
     setNumber: idx + 1,
@@ -105,10 +111,10 @@ export function parseExerciseLine(line) {
     return null;
   }
 
-  let clean = line.replace(/^[^ws]*s*/, '').trim();
+  let clean = line.replace(/^[^\w\s]*\s*/, '').trim();
 
   // Detecta número inicial do exercício (ex: "1 ", "1. ", "02 - ", "3) ")
-  const numMatch = clean.match(/^(d+)[.-)s]+s*/);
+  const numMatch = clean.match(/^(\d+)[\.\-\)\s]+\s*/);
   const exerciseNumber = numMatch ? parseInt(numMatch[1], 10) : null;
   if (numMatch) {
     clean = clean.replace(numMatch[0], '').trim();
@@ -122,16 +128,16 @@ export function parseExerciseLine(line) {
   let orientation = '';
 
   // 1. Padrão Tabular OCR: [Nome] [Séries (1-4)] [Reps] [Descanso] [Orientações...]
-  const tabularMatch = clean.match(/^(.+?)s+(d{1,2}|r2|12)s+([ds-–a-zA-ZÀ-ÿ+xX]+?)s+((?:d{2,4}(?:s*[-–]s*d{2,4})?s*[sS58]?|[-–—]|Conformes+exerc[ií]cio))s*(.*)$/i);
+  const tabularMatch = clean.match(/^(.+?)\s+(\d{1,2}|r2|12)\s+([\d\s\-–a-zA-Z\u00C0-\u00FF\+xX]+?)\s+((?:\d{2,4}(?:\s*[-–]\s*\d{2,4})?\s*[sS58]?|[-–—]|Conforme\s+exerc[ií]cio))\s*(.*)$/i);
   if (tabularMatch) {
     let rawName = tabularMatch[1].trim();
     let rawSeries = tabularMatch[2].trim().replace(/^r/i, '');
     if (rawSeries === '12' && rawName.toLowerCase().includes('estabilidade')) {
       rawSeries = '2';
     }
-    let rawReps = tabularMatch[3].trim().replace(/mn|mia/i, 'min');
+    let rawReps = tabularMatch[3].trim().replace(/\bmn\b|\bmia\b/i, 'min');
     let rawRest = tabularMatch[4].trim().replace(/[58]$/, 's');
-    if (/^d{2,4}(?:s*[-–]s*d{2,4})?$/.test(rawRest)) {
+    if (/^\d{2,4}(?:\s*[-–]\s*\d{2,4})?$/.test(rawRest)) {
       rawRest = `${rawRest} s`;
     }
     orientation = tabularMatch[5]?.trim() || '';
@@ -145,18 +151,18 @@ export function parseExerciseLine(line) {
     clean = rawName;
   } else {
     // 2. Padrão cardio sem descanso
-    const cardioMatch = clean.match(/^(.+?)s+(d{1,2})s+(d+[-–ds]*(?:min|mn|mia|reps|s)?)s*(.*)$/i);
+    const cardioMatch = clean.match(/^(.+?)\s+(\d{1,2})\s+(\d+[-–\d\s]*(?:min|mn|mia|reps|s)?)\s*(.*)$/i);
     if (cardioMatch) {
       clean = cardioMatch[1].trim();
       seriesCount = parseInt(cardioMatch[2], 10) || 1;
-      repsDescription = cardioMatch[3].trim().replace(/mn|mia/i, 'min');
+      repsDescription = cardioMatch[3].trim().replace(/\bmn\b|\bmia\b/i, 'min');
       restDescription = '-';
       orientation = cardioMatch[4]?.trim() || '';
     } else {
       // 3. Padrões alternativos de séries e repetições
-      const match = clean.match(/|s*(d+)s*|s*([ds-–a-zA-Z]+)/) ||
-                    clean.match(/(d+)s*[xX]s*([ds-–a-zA-Z]+)/) ||
-                    clean.match(/(d+)s+(d{1,2}(?:s*[-–a]s*d{1,2})?(?:s*(?:reps|min|s|km|cada lado|cada perna))?)s*$/i);
+      const match = clean.match(/\|\s*(\d+)\s*\|\s*([\d\s\-–a-zA-Z]+)/) ||
+                    clean.match(/(\d+)\s*[xX]\s*([\d\s\-–a-zA-Z]+)/) ||
+                    clean.match(/\b(\d+)\s+(\d{1,2}(?:\s*[-–a]\s*\d{1,2})?(?:\s*(?:reps|min|s|km|cada lado|cada perna))?)\s*$/i);
 
       if (match) {
         seriesCount = parseInt(match[1], 10) || 2;
@@ -169,7 +175,7 @@ export function parseExerciseLine(line) {
     }
   }
 
-  const name = clean.replace(/[|;—–-.,]+$/, '').replace(/^[|;—–-.,]+/, '').trim();
+  const name = clean.replace(/[\|;—–\-\.\,]+$/, '').replace(/^[\|;—–\-\.\,]+/, '').trim();
   if (name.length < 3) return null;
 
   const category = detectCategory(name);
@@ -245,114 +251,50 @@ export function parseWorkoutPlanFromText(text) {
         dayIdx++;
       }
 
-      const week = DEFAULT_WEEK_DAYS[dayIdx % DEFAULT_WEEK_DAYS.length];
-      let title = week.defaultTitle;
-
-      if (hasWeek) {
-        const cleanDay = line
-          .replace(/^[^\w\s]*\s*/, '')
-          .replace(/^(?:SEGUNDA|TER[CÇ]A|QUARTA|QUINTA|SEXTA|S[AÁ]BADO|DOMINGO|TREINO\s+[A-Z0-9]|FICHA\s+[A-Z0-9])\s*[-—–:]*\s*/i, '')
-          .trim();
-        if (cleanDay.length > 2) title = cleanDay;
-      } else if (hasCategoryHeader) {
-        title = `${week.defaultTitle} — ${line.replace(/^[^\w\s]*\s*/, '').trim()}`;
-      }
+      const defaultDay = DEFAULT_WEEK_DAYS[dayIdx % DEFAULT_WEEK_DAYS.length];
+      const splitHeader = line.split(/[—–-]/);
+      const title = splitHeader.length > 1 ? splitHeader.slice(1).join(' - ').trim() : line;
 
       currentDay = {
-        id: `day-${week.code.toLowerCase()}-${Date.now()}-${dayIdx}`,
-        dayCode: week.code,
-        dayName: week.name,
-        title: title,
-        shortLabel: title.slice(0, 10),
-        categoryBadge: `${week.name.toUpperCase()} • ${title.toUpperCase()}`,
-        subtitle: 'Exercícios importados',
-        exercises: [],
-        divisionType: 'weekly'
+        id: `day-${defaultDay.code.toLowerCase()}-${Date.now()}-${dayIdx}`,
+        dayCode: defaultDay.code,
+        dayName: defaultDay.name,
+        title: title || defaultDay.defaultTitle,
+        shortLabel: defaultDay.name,
+        categoryBadge: title.toUpperCase(),
+        subtitle: 'Carregando exercícios...',
+        exercises: []
       };
+
       days.push(currentDay);
       order = 1;
       continue;
     }
 
-    // 2. Se a tabela repetir o cabeçalho (Exercício ... Séries) e o dia atual já tiver exercícios:
-    if (/exerc[ií]cio/i.test(line) && /s[ée]ries/i.test(line)) {
-      if (currentDay && currentDay.exercises.length > 0) {
-        currentDay.subtitle = `${currentDay.exercises.length} exercícios planejados`;
-        dayIdx++;
-        const week = DEFAULT_WEEK_DAYS[dayIdx % DEFAULT_WEEK_DAYS.length];
-        currentDay = {
-          id: `day-${week.code.toLowerCase()}-${Date.now()}-${dayIdx}`,
-          dayCode: week.code,
-          dayName: week.name,
-          title: week.defaultTitle,
-          shortLabel: week.defaultTitle.slice(0, 10),
-          categoryBadge: `${week.name.toUpperCase()} • ${week.defaultTitle.toUpperCase()}`,
-          subtitle: 'Exercícios importados',
-          exercises: [],
-          divisionType: 'weekly'
-        };
-        days.push(currentDay);
-        order = 1;
+    // 2. Extrai exercício para o dia ativo
+    if (currentDay) {
+      // Se for linha de continuação do nome ou orientação (ex: "allernados)")
+      if (/^[a-z0-9\)\.\,\-–\s]{2,20}$/i.test(line) && !/\d+\s*[-–]\s*\d+/.test(line) && currentDay.exercises.length > 0) {
+        const lastEx = currentDay.exercises[currentDay.exercises.length - 1];
+        if (lastEx.name.endsWith('(') || /\)$/.test(line)) {
+          lastEx.name = `${lastEx.name} ${line}`.trim();
+        } else {
+          lastEx.orientation = `${lastEx.orientation} ${line}`.trim();
+        }
+        continue;
       }
-      continue;
+
+      const ex = parseExerciseLine(line);
+      if (ex) {
+        ex.order = order++;
+        ex.id = `ex-${Date.now()}-${Math.random().toString(36).substring(2, 6)}-${ex.order}`;
+        ex.sets = buildSets(ex.seriesCount, ex.repsDescription);
+        ex.suggestedRestOptions = [45, 60, 90, 120];
+        ex.isOptional = /opcional/i.test(line);
+        ex.isExpanded = true;
+        currentDay.exercises.push(ex);
+      }
     }
-
-    const ex = parseExerciseLine(line);
-    if (!ex) continue;
-
-    // 3. Se o exercício é o # 1 e o dia atual já tem 2 ou mais exercícios: transição de dia!
-    if (ex.exerciseNumber === 1 && currentDay && currentDay.exercises.length >= 2) {
-      currentDay.subtitle = `${currentDay.exercises.length} exercícios planejados`;
-      dayIdx++;
-      const week = DEFAULT_WEEK_DAYS[dayIdx % DEFAULT_WEEK_DAYS.length];
-      currentDay = {
-        id: `day-${week.code.toLowerCase()}-${Date.now()}-${dayIdx}`,
-        dayCode: week.code,
-        dayName: week.name,
-        title: week.defaultTitle,
-        shortLabel: week.defaultTitle.slice(0, 10),
-        categoryBadge: `${week.name.toUpperCase()} • ${week.defaultTitle.toUpperCase()}`,
-        subtitle: 'Exercícios importados',
-        exercises: [],
-        divisionType: 'weekly'
-      };
-      days.push(currentDay);
-      order = 1;
-    }
-
-    if (!currentDay) {
-      dayIdx = 0;
-      const week = DEFAULT_WEEK_DAYS[0];
-      currentDay = {
-        id: `day-${week.code.toLowerCase()}-${Date.now()}-${dayIdx}`,
-        dayCode: week.code,
-        dayName: week.name,
-        title: week.defaultTitle,
-        shortLabel: week.defaultTitle.slice(0, 10),
-        categoryBadge: `${week.name.toUpperCase()} • ${week.defaultTitle.toUpperCase()}`,
-        subtitle: 'Exercícios importados',
-        exercises: [],
-        divisionType: 'weekly'
-      };
-      days.push(currentDay);
-      order = 1;
-    }
-
-    currentDay.exercises.push({
-      id: `ex-${Date.now()}-${Math.random().toString(36).substring(2, 6)}-${order}`,
-      order: order++,
-      name: ex.name,
-      category: ex.category,
-      seriesCount: ex.seriesCount,
-      repsDescription: ex.repsDescription,
-      restDescription: ex.restDescription || '60s',
-      suggestedRestOptions: [45, 60, 90, 120],
-      orientation: 'Executar com postura controlada.',
-      sets: buildSets(ex.seriesCount, ex.repsDescription),
-      metricType: ex.metricType || 'kg',
-      metricUnit: ex.metricUnit || 'kg',
-      isExpanded: true
-    });
   }
 
   if (currentDay && currentDay.exercises.length > 0) {
