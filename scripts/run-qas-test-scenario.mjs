@@ -15,12 +15,12 @@ import { mergeWorkoutsPreservingLocal } from './userWorkoutStorage.mjs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const QAS_BASE_URL = process.env.QAS_URL || 'http://127.0.0.1:3002/api';
+const QAS_BASE_URL = process.env.QAS_URL || 'http://127.0.0.1:3001/api';
 
 console.log('================================================================');
-console.log('   INICIANDO BATERIA DE TESTES - AMBIENTE DE QAS (PORT 3002)   ');
+console.log('   INICIANDO BATERIA DE TESTES - AMBIENTE DE QAS (LOCAL 3001)   ');
 console.log('================================================================');
-console.log(`Endpoint QAS: ${QAS_BASE_URL}`);
+console.log(`Endpoint QAS Local: ${QAS_BASE_URL}`);
 
 const testResults = [];
 
@@ -419,9 +419,9 @@ async function runTests() {
   // Grava relatório JSON estruturado
   fs.writeFileSync('test-assets/relatorio_testes_qas.json', JSON.stringify({
     timestamp: new Date().toISOString(),
-    environment: 'QAS',
-    port: 3002,
-    database: 'appfit_qas_db',
+    environment: 'QAS (Local Windows)',
+    port: 3001,
+    database: 'appfit_db (Local)',
     summary: { total, passed, failed, successRate: `${((passed / total) * 100).toFixed(1)}%` },
     tests: testResults
   }, null, 2));

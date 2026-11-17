@@ -1,0 +1,188 @@
+{
+  "timestamp": "2026-11-17T21:22:15.538Z",
+  "environment": "QAS (Local Windows)",
+  "port": 3001,
+  "database": "appfit_db (Local)",
+  "summary": {
+    "total": 29,
+    "passed": 29,
+    "failed": 0,
+    "successRate": "100.0%"
+  },
+  "tests": [
+    {
+      "category": "Ambiente QAS",
+      "name": "Health Check e Conexão PostgreSQL (appfit_qas_db)",
+      "passed": true,
+      "details": "Server Time: 2026-11-17T21:21:49.967Z"
+    },
+    {
+      "category": "Autenticação & Usuários",
+      "name": "Cadastro de Usuário A (Imagem)",
+      "passed": true,
+      "details": "ID: usr_qas_atleta_a_1794950509999"
+    },
+    {
+      "category": "Autenticação & Usuários",
+      "name": "Cadastro de Usuário B (Planilha)",
+      "passed": true,
+      "details": "ID: usr_qas_atleta_b_1794950510000"
+    },
+    {
+      "category": "Usuário A - Imagem",
+      "name": "Localização do arquivo de imagem",
+      "passed": true,
+      "details": "Arquivo encontrado (191.0 KB)"
+    },
+    {
+      "category": "Usuário A - Imagem",
+      "name": "Processamento OCR da Ficha",
+      "passed": true,
+      "details": "Dias detectados: 5, Confiança: 77%"
+    },
+    {
+      "category": "Usuário A - Imagem",
+      "name": "Divisão Semanal dos 5 Dias (SEG a SEX)",
+      "passed": true,
+      "details": "Dias: SEG, TER, QUA, QUI, SEX"
+    },
+    {
+      "category": "Usuário A - Imagem",
+      "name": "Exercícios Segunda (Superiores A)",
+      "passed": true,
+      "details": "Exercícios: 11"
+    },
+    {
+      "category": "Usuário A - Imagem",
+      "name": "Detecção Métrica Cardio/Aquecimento (min)",
+      "passed": true,
+      "details": "Ex: Aquecimonto: tiocieta love + motilidade de ombros -> min"
+    },
+    {
+      "category": "Usuário A - Imagem",
+      "name": "Detecção Métrica Isometria/Core (s)",
+      "passed": true,
+      "details": "Ex: Isometria abdominal (bracing) -> s"
+    },
+    {
+      "category": "Usuário A - Imagem",
+      "name": "Persistência no PostgreSQL (POST /api/workouts)",
+      "passed": true,
+      "details": "Versão sync: 1"
+    },
+    {
+      "category": "Usuário A - Imagem",
+      "name": "Recuperação do PostgreSQL sem perdas (GET /api/workouts)",
+      "passed": true,
+      "details": "Dias no banco: 5"
+    },
+    {
+      "category": "Usuário B - Planilha",
+      "name": "Localização do arquivo CSV",
+      "passed": true,
+      "details": "Arquivo encontrado"
+    },
+    {
+      "category": "Usuário B - Planilha",
+      "name": "Parsing da Planilha e Divisão em 5 Dias",
+      "passed": true,
+      "details": "Dias: 5"
+    },
+    {
+      "category": "Usuário B - Planilha",
+      "name": "Sanitização de Data Excel (2026-12-10 -> 10-12 reps no Supino)",
+      "passed": true,
+      "details": "Reps Supino: 10-12"
+    },
+    {
+      "category": "Usuário B - Planilha",
+      "name": "Sanitização de Data Excel (2015-12-01 -> 12-15 reps no Crucifixo)",
+      "passed": true,
+      "details": "Reps Crucifixo: 12-15"
+    },
+    {
+      "category": "Usuário B - Planilha",
+      "name": "Sanitização de Série Excel (2026-02-01 -> 2 séries na Rosca Bíceps)",
+      "passed": true,
+      "details": "Séries Rosca: 2"
+    },
+    {
+      "category": "Usuário B - Planilha",
+      "name": "Detecção Métrica Unilateral Corporal (reps na Marcha Deitada)",
+      "passed": true,
+      "details": "Unidade: reps"
+    },
+    {
+      "category": "Usuário B - Planilha",
+      "name": "Persistência no PostgreSQL (POST /api/workouts)",
+      "passed": true,
+      "details": "Versão sync: 1"
+    },
+    {
+      "category": "Usuário B - Planilha",
+      "name": "Recuperação do PostgreSQL sem perdas (GET /api/workouts)",
+      "passed": true,
+      "details": "Dias no banco: 5"
+    },
+    {
+      "category": "Ciclo de Treino",
+      "name": "Início de Sessão de Treino Ativa",
+      "passed": true,
+      "details": "Dia iniciado: SUPERIORES A"
+    },
+    {
+      "category": "Ciclo de Treino",
+      "name": "Alteração Granular de Carga (35kg e 40kg) via PATCH atômico",
+      "passed": true,
+      "details": "Versão retornada: 3"
+    },
+    {
+      "category": "Ciclo de Treino",
+      "name": "Marcação Atômica de Série Concluída (Feito)",
+      "passed": true,
+      "details": "Série set-1794950535236-vzdx-1 concluída"
+    },
+    {
+      "category": "Ciclo de Treino",
+      "name": "Disparo de Temporizador de Descanso (60s)",
+      "passed": true,
+      "details": "Alvo: +60s"
+    },
+    {
+      "category": "Resiliência & Concorrência",
+      "name": "Proteção contra Sobrescrita Destrutiva durante Polling",
+      "passed": true,
+      "details": "Série 1 Feito: true, Série 2 Carga: 40kg"
+    },
+    {
+      "category": "Resiliência & Concorrência",
+      "name": "Ficha de Treino Permanece 100% Presente (Sem Sumir)",
+      "passed": true,
+      "details": "Dias presentes: 5, Exercícios no Dia 1: 11"
+    },
+    {
+      "category": "Ciclo de Treino",
+      "name": "Registro de Sessão no Histórico (POST /api/sessions)",
+      "passed": true,
+      "details": "Session ID: rec-qas-1794950535484"
+    },
+    {
+      "category": "Ciclo de Treino",
+      "name": "Consulta ao Histórico de Treinos (GET /api/sessions)",
+      "passed": true,
+      "details": "Total no histórico: 1"
+    },
+    {
+      "category": "Ciclo de Treino",
+      "name": "Reset de Marcações para o Próximo Treino no Banco",
+      "passed": true,
+      "details": "Todas as séries voltaram a completed=false"
+    },
+    {
+      "category": "Ciclo de Treino",
+      "name": "Preservação da Carga Máxima (lastWeight=40kg) no Exercício",
+      "passed": true,
+      "details": "lastWeight: 40kg"
+    }
+  ]
+}
