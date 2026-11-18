@@ -1,12 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { Camera, FileSpreadsheet, Upload, Sparkles, CheckCircle2, AlertCircle, Eye, ArrowRight, Dumbbell, Calendar, Layers, Edit3, RefreshCw, Lightbulb } from 'lucide-react';
-import type { WorkoutDay } from '../types/workout';
-import { parseSpreadsheet, parsePlainTextPlan, convertToAlphabeticalDivision, convertToWeeklyDivision } from '../utils/importUtils';
+import type { WorkoutDay, WorkoutCycle } from '../types/workout';
+import { parseSpreadsheet, parsePlainTextPlan, convertToAlphabeticalDivision, convertToWeeklyDivision, detectWorkoutCycle } from '../utils/importUtils';
+import { calculateEndDateFromWeeks, calculateCycleFromDates } from '../utils/dateUtils';
 import { processWorkoutImage } from '../utils/imageOcr';
 import { ImportTemplateGuideModal } from './ImportTemplateGuideModal';
 
 interface WelcomeUploadScreenProps {
-  onWorkoutsLoaded: (days: WorkoutDay[]) => void;
+  onWorkoutsLoaded: (days: WorkoutDay[], detectedCycle?: WorkoutCycle) => void;
   onOpenManualModal: () => void;
 }
 
@@ -20,6 +21,7 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStatusText, setScanStatusText] = useState('Iniciando leitura OCR...');
   const [scannedDays, setScannedDays] = useState<WorkoutDay[] | null>(null);
+  const [detectedCycle, setDetectedCycle] = useState<{ durationWeeks: number; durationMonths: number; rawMatch: string } | null>(null);
   const [extractedRawText, setExtractedRawText] = useState('');
   const [showRawTextEditor, setShowRawTextEditor] = useState(false);
   const [distributionMode, setDistributionMode] = useState<'weekly' | 'alphabetical'>('weekly');
@@ -64,6 +66,10 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
 
       setExtractedRawText(result.text);
 
+      if (result.detectedCycle) {
+        setDetectedCycle(result.detectedCycle);
+      }
+
       if (result.days.length === 0) {
         setErrorMessage('Não foi possível identificar exercícios nesta imagem de forma estruturada. Revise o texto extraído no campo abaixo para ajustar os exercícios.');
         setShowRawTextEditor(true);
@@ -89,6 +95,10 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
     if (days.length === 0) {
       setErrorMessage('Não foi possível identificar exercícios no texto. Utilize linhas como: "Supino Reto 3x10".');
       return;
+    }
+    const cycleFound = detectWorkoutCycle(extractedRawText);
+    if (cycleFound) {
+      setDetectedCycle(cycleFound);
     }
     setScannedDays(days);
     setShowRawTextEditor(false);
@@ -121,7 +131,13 @@ export const WelcomeUploadScreen: React.FC<WelcomeUploadScreenProps> = ({
   // Confirm and load
   const handleConfirm = () => {
     if (scannedDays && scannedDays.length > 0) {
-      onWorkoutsLoaded(scannedDays);
+      let cycleToPass: WorkoutCycle | undefined = undefined;
+      if (detectedCycle) {
+        const today = new Date().toISOString().split('T')[0];
+        const end = calculateEndDateFromWeeks(today, detectedCycle.durationWeeks);
+        cycleToPass = calculateCycleFromDates(today, end);
+      }
+      onWorkoutsLoaded(scannedDays, cycleToPass);
     }
   };
 

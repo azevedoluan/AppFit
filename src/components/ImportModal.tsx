@@ -1,14 +1,15 @@
 import React, { useState, useRef } from 'react';
 import { X, FileSpreadsheet, Image as ImageIcon, Plus, CheckCircle, AlertCircle, Sparkles, UploadCloud, Calendar, Layers, Lightbulb, HelpCircle, Activity } from 'lucide-react';
-import type { WorkoutDay, Exercise, MetricUnit } from '../types/workout';
-import { parseSpreadsheet, parsePlainTextPlan, convertToAlphabeticalDivision, convertToWeeklyDivision } from '../utils/importUtils';
+import type { WorkoutDay, Exercise, MetricUnit, WorkoutCycle } from '../types/workout';
+import { parseSpreadsheet, parsePlainTextPlan, convertToAlphabeticalDivision, convertToWeeklyDivision, detectWorkoutCycle } from '../utils/importUtils';
+import { calculateEndDateFromWeeks, calculateCycleFromDates } from '../utils/dateUtils';
 import { processWorkoutImage } from '../utils/imageOcr';
 import { ImportTemplateGuideModal } from './ImportTemplateGuideModal';
 
 interface ImportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onImportWorkoutDays: (newDays: WorkoutDay[]) => void;
+  onImportWorkoutDays: (newDays: WorkoutDay[], detectedCycle?: WorkoutCycle) => void;
 }
 
 export const ImportModal: React.FC<ImportModalProps> = ({
@@ -18,6 +19,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'sheet' | 'image' | 'manual'>('sheet');
   const [previewDays, setPreviewDays] = useState<WorkoutDay[]>([]);
+  const [detectedCycle, setDetectedCycle] = useState<{ durationWeeks: number; durationMonths: number; rawMatch: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -139,9 +141,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
       setPastedText(result.text);
 
+      if (result.detectedCycle) {
+        setDetectedCycle(result.detectedCycle);
+      }
+
       if (result.days.length > 0) {
         setPreviewDays(result.days);
-        setSuccessMessage(`Leitura OCR concluída! ${result.days.length} rotina(s) de treino identificada(s) na imagem.`);
+        const cycleMsg = result.detectedCycle ? ` • Ciclo detectado: ${result.detectedCycle.durationWeeks} semanas` : '';
+        setSuccessMessage(`Leitura OCR concluída! ${result.days.length} rotina(s) de treino identificada(s)${cycleMsg}.`);
       } else {
         setSuccessMessage('Texto da imagem lido com sucesso! Você pode ajustar o texto abaixo e clicar em "Processar Texto".');
       }
@@ -163,8 +170,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       if (parsed.length === 0) {
         throw new Error('Não foi possível identificar exercícios. Formate as linhas com: Exercício | Séries | Repetições');
       }
+      const cycleFound = detectWorkoutCycle(pastedText);
+      if (cycleFound) {
+        setDetectedCycle(cycleFound);
+      }
       setPreviewDays(parsed);
-      setSuccessMessage(`${parsed.length} dia(s) processado(s) com sucesso!`);
+      const cycleMsg = cycleFound ? ` • Ciclo: ${cycleFound.durationWeeks} sem` : '';
+      setSuccessMessage(`${parsed.length} dia(s) processado(s) com sucesso!${cycleMsg}`);
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'Erro ao processar texto.');
     }
@@ -176,7 +188,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       setErrorMessage('Nenhum treino para importar.');
       return;
     }
-    onImportWorkoutDays(previewDays);
+    let cycleToPass: WorkoutCycle | undefined = undefined;
+    if (detectedCycle) {
+      const today = new Date().toISOString().split('T')[0];
+      const end = calculateEndDateFromWeeks(today, detectedCycle.durationWeeks);
+      cycleToPass = calculateCycleFromDates(today, end);
+    }
+    onImportWorkoutDays(previewDays, cycleToPass);
     onClose();
   };
 

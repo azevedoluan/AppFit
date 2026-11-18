@@ -4,7 +4,7 @@ import cors from 'cors';
 import { pool } from './db.js';
 import sharp from 'sharp';
 import Tesseract from 'tesseract.js';
-import { parseWorkoutPlanFromText, detectMetricUnit } from './ocrParser.js';
+import { parseWorkoutPlanFromText, detectMetricUnit, detectWorkoutCycle } from './ocrParser.js';
 import { sendVerificationCodeEmail } from './mailer.js';
 
 const app = express();
@@ -128,10 +128,12 @@ app.post('/api/ocr/analyze-workout', async (req, res) => {
     const result = await Tesseract.recognize(processedBuffer, 'por+eng');
     const rawText = result.data.text || '';
     const days = parseWorkoutPlanFromText(rawText);
+    const detectedCycle = detectWorkoutCycle(rawText);
 
     res.json({
       text: rawText,
       days: days || [],
+      detectedCycle: detectedCycle || null,
       confidence: result.data.confidence || 0
     });
   } catch (err) {
@@ -293,9 +295,9 @@ app.post('/api/users/sync', async (req, res) => {
   }
 });
 
-// Atualiza dados de perfil do usuário (nome, foto de perfil) diretamente no PostgreSQL
+// Atualiza dados de perfil do usuário (nome, foto de perfil, e-mail) diretamente no PostgreSQL
 app.post('/api/users/profile', async (req, res) => {
-  const { userId, name, avatarUrl } = req.body;
+  const { userId, name, avatarUrl, email } = req.body;
   if (!userId) {
     return res.status(400).json({ error: 'userId é obrigatório' });
   }
@@ -313,6 +315,22 @@ app.post('/api/users/profile', async (req, res) => {
     if (avatarUrl !== undefined && avatarUrl !== null) {
       fields.push(`avatar_url = $${idx++}`);
       values.push(avatarUrl);
+    }
+
+    if (email !== undefined && email !== null && email.trim()) {
+      const cleanEmail = email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return res.status(400).json({ error: 'Formato de e-mail inválido.' });
+      }
+      const existingEmail = await pool.query(
+        'SELECT id FROM users WHERE LOWER(email) = $1 AND id != $2 LIMIT 1;',
+        [cleanEmail, userId]
+      );
+      if (existingEmail.rows.length > 0) {
+        return res.status(409).json({ error: 'Este e-mail já está em uso por outro usuário.' });
+      }
+      fields.push(`email = $${idx++}`);
+      values.push(cleanEmail);
     }
 
     if (fields.length === 0) {
@@ -555,10 +573,14 @@ app.get('/api/workouts', async (req, res) => {
       [userId]
     );
     const cycle = cycleRes.rows.length > 0 ? {
-      startDate: cycleRes.rows[0].start_date,
-      endDate: cycleRes.rows[0].end_date,
+      startDate: cycleRes.rows[0].start_date instanceof Date
+        ? cycleRes.rows[0].start_date.toISOString().split('T')[0]
+        : String(cycleRes.rows[0].start_date).split('T')[0],
+      endDate: cycleRes.rows[0].end_date instanceof Date
+        ? cycleRes.rows[0].end_date.toISOString().split('T')[0]
+        : String(cycleRes.rows[0].end_date).split('T')[0],
       durationWeeks: cycleRes.rows[0].duration_weeks,
-      durationMonths: cycleRes.rows[0].duration_months,
+      durationMonths: parseFloat(cycleRes.rows[0].duration_months),
       isActive: cycleRes.rows[0].is_active
     } : null;
 
@@ -698,8 +720,28 @@ app.post('/api/workouts', async (req, res) => {
     let cycleId = null;
     if (cycle) {
       cycleId = `cycle-${userId}`;
-      const durWeeks = Math.max(1, Math.round(Number(cycle.durationWeeks) || 4));
-      const durMonths = Math.max(0.5, parseFloat(cycle.durationMonths) || 1.0);
+      const existingCycleRes = await client.query(
+        'SELECT id, start_date, end_date, duration_weeks, duration_months FROM workout_cycles WHERE user_id = $1 AND is_active = true LIMIT 1;',
+        [userId]
+      );
+      const hasExistingCycle = existingCycleRes.rows.length > 0;
+      const forceCycleOverride = Boolean(req.body.forceCycleOverride || cycle.forceOverride);
+
+      let sDate, eDate, durWeeks, durMonths;
+      if (hasExistingCycle && !forceCycleOverride) {
+        // PRESERVA a duração e validade definida manualmente pelo usuário!
+        const ex = existingCycleRes.rows[0];
+        sDate = ex.start_date instanceof Date ? ex.start_date.toISOString().split('T')[0] : String(ex.start_date).split('T')[0];
+        eDate = ex.end_date instanceof Date ? ex.end_date.toISOString().split('T')[0] : String(ex.end_date).split('T')[0];
+        durWeeks = ex.duration_weeks;
+        durMonths = Math.max(1, Math.round(Number(ex.duration_months) || 1));
+      } else {
+        durWeeks = Math.max(1, Math.round(Number(cycle.durationWeeks) || 8));
+        durMonths = Math.max(1, Math.round(Number(cycle.durationMonths) || (durWeeks / 4.33)));
+        sDate = cycle.startDate ? String(cycle.startDate).split('T')[0] : new Date().toISOString().split('T')[0];
+        eDate = cycle.endDate ? String(cycle.endDate).split('T')[0] : sDate;
+      }
+
       await client.query(
         `INSERT INTO workout_cycles (id, user_id, name, start_date, end_date, duration_weeks, duration_months, is_active)
          VALUES ($1, $2, 'Ciclo Regular', $3, $4, $5, $6, true)
@@ -709,7 +751,7 @@ app.post('/api/workouts', async (req, res) => {
            duration_weeks = EXCLUDED.duration_weeks,
            duration_months = EXCLUDED.duration_months,
            updated_at = CURRENT_TIMESTAMP;`,
-        [cycleId, userId, cycle.startDate || new Date(), cycle.endDate || new Date(), durWeeks, durMonths]
+        [cycleId, userId, sDate, eDate, durWeeks, durMonths]
       );
     }
 
@@ -812,6 +854,65 @@ app.post('/api/workouts', async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// Atualização atômica exclusiva do ciclo de treino (sem tocar em exercícios nem zerar treinos)
+app.post('/api/workouts/cycle', async (req, res) => {
+  const { userId, startDate, endDate, durationWeeks, durationMonths } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId é obrigatório' });
+  }
+
+  try {
+    const cycleId = `cycle-${userId}`;
+    const durWeeks = Math.max(1, Math.round(Number(durationWeeks) || 8));
+    const durMonths = Math.max(1, Math.round(Number(durationMonths) || (durWeeks / 4.33)));
+    const sDate = startDate ? String(startDate).split('T')[0] : new Date().toISOString().split('T')[0];
+    let eDate = endDate ? String(endDate).split('T')[0] : null;
+
+    if (!eDate || eDate === sDate) {
+      const [y, m, d] = sDate.split('-').map(Number);
+      const dt = new Date(y, (m || 1) - 1, d || 1);
+      dt.setDate(dt.getDate() + durWeeks * 7);
+      eDate = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    }
+
+    const query = `
+      INSERT INTO workout_cycles (id, user_id, name, start_date, end_date, duration_weeks, duration_months, is_active)
+      VALUES ($1, $2, 'Ciclo Regular', $3, $4, $5, $6, true)
+      ON CONFLICT (id) DO UPDATE SET
+        start_date = EXCLUDED.start_date,
+        end_date = EXCLUDED.end_date,
+        duration_weeks = EXCLUDED.duration_weeks,
+        duration_months = EXCLUDED.duration_months,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING id, name, start_date, end_date, duration_weeks, duration_months, is_active;
+    `;
+    const result = await pool.query(query, [cycleId, userId, sDate, eDate, durWeeks, durMonths]);
+    const row = result.rows[0];
+
+    // Garante que o programa ativo tenha a referência correta deste ciclo
+    await pool.query(
+      'UPDATE workout_programs SET cycle_id = $1 WHERE user_id = $2 AND is_active = true;',
+      [cycleId, userId]
+    );
+
+    const syncVer = bumpSyncVersion(userId);
+    res.json({
+      success: true,
+      version: syncVer,
+      cycle: {
+        startDate: row.start_date instanceof Date ? row.start_date.toISOString().split('T')[0] : String(row.start_date).split('T')[0],
+        endDate: row.end_date instanceof Date ? row.end_date.toISOString().split('T')[0] : String(row.end_date).split('T')[0],
+        durationWeeks: row.duration_weeks,
+        durationMonths: parseFloat(row.duration_months),
+        isActive: row.is_active
+      }
+    });
+  } catch (err) {
+    console.error('Erro ao atualizar ciclo de treino:', err);
+    res.status(500).json({ error: 'Erro ao persistir ciclo no PostgreSQL: ' + err.message });
   }
 });
 

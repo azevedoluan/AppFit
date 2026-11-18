@@ -571,7 +571,11 @@ export const App: React.FC = () => {
     if (currentUser) {
       saveUserCycle(currentUser.id, newCycle);
       if (!isSyncingFromRemoteRef.current) {
-        api.saveWorkouts(currentUser.id, workoutDays, newCycle);
+        api.saveCycle(currentUser.id, newCycle).then(res => {
+          if (res && (res as any).version) {
+            lastSyncVersionRef.current = Math.max(lastSyncVersionRef.current, (res as any).version);
+          }
+        });
       }
     }
   };
@@ -1140,8 +1144,11 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleImportWorkoutDays = (newDays: WorkoutDay[]) => {
+  const handleImportWorkoutDays = (newDays: WorkoutDay[], detectedCycle?: WorkoutCycle) => {
     updateAndSaveWorkouts(newDays);
+    if (detectedCycle) {
+      updateAndSaveCycle(detectedCycle);
+    }
     if (newDays.length > 0) {
       handleSelectDay(newDays[0].id);
     }
@@ -1437,14 +1444,26 @@ export const App: React.FC = () => {
         onClose={() => setIsSettingsModalOpen(false)}
         userName={userName}
         userEmail={currentUser?.email}
+        avatarUrl={avatarUrl}
         authProvider={currentUser?.provider}
-        onUpdateProfile={async (name) => {
+        onUpdateAvatar={handleUpdateAvatar}
+        onUpdateProfile={async (name, email, newAvatar) => {
           setUserName(name);
+          if (newAvatar) setAvatarUrl(newAvatar);
           if (currentUser) {
-            const updated = { ...currentUser, name };
+            const updated = {
+              ...currentUser,
+              name,
+              email: email || currentUser.email,
+              avatarUrl: newAvatar || currentUser.avatarUrl
+            };
             setCurrentUser(updated);
             localStorage.setItem('appfit_current_session_user', JSON.stringify(updated));
-            await api.updateProfile(currentUser.id, { name });
+            await api.updateProfile(currentUser.id, {
+              name,
+              email,
+              avatarUrl: newAvatar
+            });
           }
         }}
         cycle={cycle}

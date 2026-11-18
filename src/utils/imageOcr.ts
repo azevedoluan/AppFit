@@ -1,12 +1,13 @@
 import Tesseract from 'tesseract.js';
 import type { WorkoutDay } from '../types/workout';
-import { parsePlainTextPlan } from './importUtils';
+import { parsePlainTextPlan, detectWorkoutCycle } from './importUtils';
 import { api } from '../services/api';
 
 export interface OcrResult {
   text: string;
   days: WorkoutDay[];
   confidence: number;
+  detectedCycle?: { durationWeeks: number; durationMonths: number; rawMatch: string } | null;
 }
 
 async function convertToBase64(source: File | string): Promise<string> {
@@ -56,12 +57,15 @@ export async function processWorkoutImage(
         days = parsePlainTextPlan(backendResult.text);
       }
 
+      const detectedCycle = backendResult.detectedCycle || detectWorkoutCycle(backendResult.text || '');
+
       if (days.length > 0) {
         onProgress?.(100, `Leitura concluída com sucesso! ${days.length} rotinas identificadas.`);
         return {
           text: backendResult.text || '',
           days,
-          confidence: backendResult.confidence || 75
+          confidence: backendResult.confidence || 75,
+          detectedCycle
         };
       }
     }
@@ -90,12 +94,14 @@ export async function processWorkoutImage(
     onProgress?.(96, 'Estruturando rotinas, dias da semana e repetições...');
 
     const parsedDays = parsePlainTextPlan(rawText);
+    const detectedCycle = detectWorkoutCycle(rawText);
     onProgress?.(100, 'Processamento concluído com sucesso!');
 
     return {
       text: rawText,
       days: parsedDays,
-      confidence
+      confidence,
+      detectedCycle
     };
   } catch (err) {
     console.error('[OCR Error] Falha ao processar imagem:', err);

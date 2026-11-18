@@ -239,6 +239,55 @@ var DEFAULT_WEEK_DAYS = [
   { code: "SAB", name: "S\xE1bado", defaultTitle: "Cardio Opcional" },
   { code: "DOM", name: "Domingo", defaultTitle: "Descanso" }
 ];
+function detectWorkoutCycle(text) {
+  if (!text) return null;
+  const t = String(text);
+  const weekMatch = t.match(/(?:ciclo(?:\s+inicial)?|dura[çc][ãa]o|validade|per[íi]odo|programa)[\s:=–—!]+(\d{1,2})\s*semanas?/i);
+  if (weekMatch) {
+    const weeks = parseInt(weekMatch[1], 10);
+    if (weeks >= 1 && weeks <= 52) {
+      return {
+        durationWeeks: weeks,
+        durationMonths: Math.max(0.5, Math.round(weeks / 4.33 * 10) / 10),
+        rawMatch: weekMatch[0]
+      };
+    }
+  }
+  const monthMatch = t.match(/(?:ciclo(?:\s+inicial)?|dura[çc][ãa]o|validade|per[íi]odo|programa)[\s:=–—!]+(\d{1,2}(?:[.,]\d)?)\s*mes(?:es)?/i);
+  if (monthMatch) {
+    const months = parseFloat(monthMatch[1].replace(",", "."));
+    if (months >= 0.5 && months <= 24) {
+      const weeks = Math.max(1, Math.round(months * 4.33));
+      return {
+        durationWeeks: weeks,
+        durationMonths: months,
+        rawMatch: monthMatch[0]
+      };
+    }
+  }
+  const headerSlice = t.slice(0, 800);
+  const noisyCycleMatch = headerSlice.match(/(?:cr\s*cia|ciclo|cicio|cicte|cici|cicio)[\s\w!:=–—]*?(\d{1,2})\s*semanas?/i);
+  if (noisyCycleMatch) {
+    const weeks = parseInt(noisyCycleMatch[1], 10);
+    if (weeks >= 1 && weeks <= 52) {
+      return {
+        durationWeeks: weeks,
+        durationMonths: Math.max(0.5, Math.round(weeks / 4.33 * 10) / 10),
+        rawMatch: noisyCycleMatch[0]
+      };
+    }
+  }
+  const generalWeek = headerSlice.match(/\b([2-9]|1[0-6])\s*semanas?\b/i);
+  if (generalWeek) {
+    const weeks = parseInt(generalWeek[1], 10);
+    return {
+      durationWeeks: weeks,
+      durationMonths: Math.max(0.5, Math.round(weeks / 4.33 * 10) / 10),
+      rawMatch: generalWeek[0]
+    };
+  }
+  return null;
+}
 function parsePlainTextPlan(text) {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   const parsedDays = [];
@@ -591,6 +640,7 @@ export {
   convertToAlphabeticalDivision,
   convertToWeeklyDivision,
   detectMetricUnit,
+  detectWorkoutCycle,
   downloadTemplateSpreadsheet,
   exportToExcel,
   parseDayCode,

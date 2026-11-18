@@ -1,0 +1,128 @@
+{
+  "timestamp": "2026-11-18T00:16:44.932Z",
+  "environment": "QAS (Local Windows)",
+  "port": 3001,
+  "database": "appfit_db (Local)",
+  "summary": {
+    "total": 19,
+    "passed": 19,
+    "failed": 0,
+    "successRate": "100.0%"
+  },
+  "tests": [
+    {
+      "category": "Cálculo de Datas",
+      "name": "Normalização de data ISO do PostgreSQL para YYYY-MM-DD",
+      "passed": true,
+      "details": "Entrada: 2026-11-17T00:00:00.000Z -> Saída: 2026-11-17"
+    },
+    {
+      "category": "Cálculo de Datas",
+      "name": "Formatação brasileira DD/MM/AAAA a partir de ISO",
+      "passed": true,
+      "details": "Resultado: 17/11/2026"
+    },
+    {
+      "category": "Cálculo de Datas",
+      "name": "Cálculo de data de término para 8 semanas",
+      "passed": true,
+      "details": "Término: 2027-01-12"
+    },
+    {
+      "category": "Cálculo de Datas",
+      "name": "Cálculo de ciclo em semanas sem NaN / Invalid Date",
+      "passed": true,
+      "details": "Semanas: 8, Meses: 1.9"
+    },
+    {
+      "category": "Perfil do Usuário",
+      "name": "Criação do usuário de teste no PostgreSQL",
+      "passed": true,
+      "details": "ID: usr_qas_perfil_1794960981245"
+    },
+    {
+      "category": "Perfil do Usuário",
+      "name": "Alteração e Persistência do Nome Completo",
+      "passed": true,
+      "details": "Nome retornado: Luan Azevedo (Perfil Atualizado)"
+    },
+    {
+      "category": "Perfil do Usuário",
+      "name": "Rejeição de formato de e-mail inválido",
+      "passed": true,
+      "details": "Status: 400"
+    },
+    {
+      "category": "Perfil do Usuário",
+      "name": "Alteração e Persistência do E-mail",
+      "passed": true,
+      "details": "Novo e-mail: luan_atualizado_1794960981444@appfit.test"
+    },
+    {
+      "category": "Perfil do Usuário",
+      "name": "Bloqueio de E-mail Duplicado (Retorno 409 Conflict)",
+      "passed": true,
+      "details": "Status: 409"
+    },
+    {
+      "category": "Perfil do Usuário",
+      "name": "Alteração e Persistência da Foto de Perfil",
+      "passed": true,
+      "details": "Foto gravada: data:image/jpeg;base64,/9j/4AA..."
+    },
+    {
+      "category": "Perfil do Usuário",
+      "name": "Verificação e Consistência Global do Perfil no PostgreSQL",
+      "passed": true,
+      "details": "Nome: Luan Azevedo (Perfil Atualizado), E-mail: luan_atualizado_1794960981444@appfit.test"
+    },
+    {
+      "category": "Duração do Treino",
+      "name": "Configuração Manual do Ciclo via Endpoint Atômico (/api/workouts/cycle)",
+      "passed": true,
+      "details": "Duração: 12 semanas, Fim: 2027-02-09"
+    },
+    {
+      "category": "Duração do Treino",
+      "name": "Envio de Nova Ficha de Treino (POST /api/workouts)",
+      "passed": true,
+      "details": "Versão sync: 5"
+    },
+    {
+      "category": "Duração do Treino",
+      "name": "PRESERVAÇÃO DA DURAÇÃO: 12 semanas mantidas intactas após upload de treino",
+      "passed": true,
+      "details": "Duração no banco: 12 semanas (esperado: 12 semanas)"
+    },
+    {
+      "category": "Detecção Inteligente",
+      "name": "Extração de \"Ciclo inicial: 8 semanas\"",
+      "passed": true,
+      "details": "Detectado: 8 semanas (Match: Ciclo inicial: 8 semanas)"
+    },
+    {
+      "category": "Detecção Inteligente",
+      "name": "Extração sob ruído OCR (\"Cr cia! 8 semanas\")",
+      "passed": true,
+      "details": "Detectado: 8 semanas (Match: Cr cia! 8 semanas)"
+    },
+    {
+      "category": "Detecção Inteligente",
+      "name": "Extração de \"Duração: 6 semanas\"",
+      "passed": true,
+      "details": "Detectado: 6 semanas (Match: Duração: 6 semanas)"
+    },
+    {
+      "category": "Detecção Inteligente",
+      "name": "Conversão de \"Ciclo: 3 meses\" para semanas (~13 sem)",
+      "passed": true,
+      "details": "Detectado: 13 semanas (3 meses)"
+    },
+    {
+      "category": "Detecção Inteligente",
+      "name": "OCR Real da Ficha Anexada detectando 8 semanas via endpoint",
+      "passed": true,
+      "details": "Duração detectada no OCR: 8 semanas"
+    }
+  ]
+}

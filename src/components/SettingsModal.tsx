@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, User, Download, Upload, Calendar, FileSpreadsheet, LogOut, Check } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, User, Download, Upload, Calendar, FileSpreadsheet, LogOut, Check, Camera, AlertCircle } from 'lucide-react';
 import type { WorkoutDay, WorkoutCycle } from '../types/workout';
 import { exportToExcel } from '../utils/importUtils';
 import { calculateCycleFromDates, calculateEndDateFromWeeks, calculateEndDateFromMonths, formatDateBr } from '../utils/dateUtils';
@@ -9,8 +9,10 @@ interface SettingsModalProps {
   onClose: () => void;
   userName: string;
   userEmail?: string;
+  avatarUrl?: string;
   authProvider?: string;
-  onUpdateProfile: (name: string) => void;
+  onUpdateAvatar?: (url: string) => void;
+  onUpdateProfile: (name: string, email?: string, avatarUrl?: string) => Promise<void> | void;
   cycle: WorkoutCycle;
   onUpdateCycle: (cycle: WorkoutCycle) => void;
   workoutDays: WorkoutDay[];
@@ -26,7 +28,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   userName,
   userEmail,
+  avatarUrl,
   authProvider,
+  onUpdateAvatar,
   onUpdateProfile,
   cycle,
   onUpdateCycle,
@@ -35,10 +39,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onLogout
 }) => {
   const [name, setName] = useState(userName);
+  const [email, setEmail] = useState(userEmail || '');
+  const [avatar, setAvatar] = useState(avatarUrl || '');
   const [startDate, setStartDate] = useState(cycle.startDate);
   const [endDate, setEndDate] = useState(cycle.endDate);
   const [durationWeeks, setDurationWeeks] = useState(cycle.durationWeeks);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -73,10 +82,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onUpdateCycle(calc);
   };
 
-  const handleSaveProfile = () => {
-    onUpdateProfile(name);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2000);
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const rawData = evt.target?.result as string;
+      if (!rawData) return;
+
+      // Otimização visual: redimensiona foto para max 320x320 para salvar levemente no PostgreSQL e localStorage
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 320;
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > maxDim) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          }
+        } else {
+          if (h > maxDim) {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const optimized = canvas.toDataURL('image/jpeg', 0.88);
+          setAvatar(optimized);
+          onUpdateAvatar?.(optimized);
+        } else {
+          setAvatar(rawData);
+          onUpdateAvatar?.(rawData);
+        }
+      };
+      img.src = rawData;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfile = async () => {
+    setSaveError(null);
+    setIsSaving(true);
+    try {
+      await onUpdateProfile(name.trim(), email.trim(), avatar);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2500);
+    } catch (err: any) {
+      setSaveError(err?.message || 'Erro ao salvar alterações de perfil.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleExportJson = () => {
@@ -142,33 +204,96 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
 
-          <div>
-            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Nome Completo</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Luan Azevedo"
-                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
-              />
+          {/* Photo & Basic Info */}
+          <div className="flex items-center gap-3 pt-1">
+            <div className="relative group">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center overflow-hidden border-2 border-slate-700 shadow-md">
+                {avatar ? (
+                  <img src={avatar} alt="Foto de perfil" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-white font-extrabold text-xl">
+                    {name ? name.slice(0, 1).toUpperCase() : 'U'}
+                  </span>
+                )}
+              </div>
               <button
-                onClick={handleSaveProfile}
-                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs border border-slate-700 transition-colors flex items-center gap-1"
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                title="Alterar foto de perfil"
+                className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center shadow-lg hover:bg-cyan-400 active:scale-95 transition-all"
               >
-                {savedSuccess ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : 'Salvar'}
+                <Camera className="w-3.5 h-3.5" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoUpload}
+                className="hidden"
+              />
+            </div>
+
+            <div className="flex-1">
+              <p className="text-xs font-bold text-white truncate">{name || 'Usuário'}</p>
+              <p className="text-[11px] text-slate-400 font-mono truncate">{email || 'Sem e-mail'}</p>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-[10px] text-cyan-400 hover:text-cyan-300 font-semibold mt-0.5 flex items-center gap-1"
+              >
+                <span>Trocar foto</span>
               </button>
             </div>
           </div>
 
-          {userEmail && (
-            <div>
-              <label className="text-[11px] font-semibold text-slate-400 block mb-0.5">E-mail</label>
-              <div className="text-xs text-slate-300 font-mono bg-slate-950 p-2 rounded-xl border border-slate-800 truncate">
-                {userEmail}
-              </div>
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Nome Completo</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ex: Luan Azevedo"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">E-mail</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="seu@email.com"
+              disabled={authProvider === 'google'}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed font-mono"
+            />
+          </div>
+
+          {saveError && (
+            <div className="p-2 rounded-xl bg-red-950/40 border border-red-500/30 text-red-300 text-[11px] flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{saveError}</span>
             </div>
           )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={handleSaveProfile}
+              disabled={isSaving}
+              className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-slate-950 font-black text-xs shadow-md shadow-cyan-500/20 transition-all flex items-center justify-center gap-1.5 disabled:opacity-60"
+            >
+              {savedSuccess ? (
+                <>
+                  <Check className="w-4 h-4 text-slate-950" />
+                  <span>Perfil Salvo com Sucesso!</span>
+                </>
+              ) : isSaving ? (
+                <span>Salvando...</span>
+              ) : (
+                <span>Salvar Alterações de Perfil</span>
+              )}
+            </button>
+          </div>
 
           <button
             onClick={() => {
@@ -177,10 +302,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClose();
               }
             }}
-            className="w-full py-2 rounded-xl bg-red-950/30 hover:bg-red-950/50 text-red-400 font-bold text-xs border border-red-500/30 transition-colors flex items-center justify-center gap-2"
+            className="w-full py-1.5 rounded-xl bg-red-950/20 hover:bg-red-950/40 text-red-400 font-bold text-[11px] border border-red-500/20 transition-colors flex items-center justify-center gap-1.5 mt-1"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Sair da Conta / Trocar Usuário</span>
+            <span>Sair da Conta</span>
           </button>
         </div>
 

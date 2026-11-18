@@ -13,14 +13,28 @@ const BASE_URL = '/api';
  * (usadas internamente pelo drenador de fila offline).
  */
 export const rawApi = {
-  async updateProfile(userId: string, data: { name?: string; avatarUrl?: string }): Promise<User | null> {
+  async updateProfile(userId: string, data: { name?: string; email?: string; avatarUrl?: string }): Promise<User | null> {
     const res = await fetch(`${BASE_URL}/users/profile`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, ...data }),
       signal: AbortSignal.timeout(8000)
     });
-    if (!res.ok) throw new Error('Erro ao atualizar perfil');
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Erro ao atualizar perfil');
+    }
+    return await res.json();
+  },
+
+  async saveCycle(userId: string, cycle: WorkoutCycle): Promise<{ success: boolean; version?: number; cycle?: WorkoutCycle }> {
+    const res = await fetch(`${BASE_URL}/workouts/cycle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, ...cycle }),
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!res.ok) return { success: false };
     return await res.json();
   },
 
@@ -147,6 +161,8 @@ registerRawApiExecutor(async (type, userId, payload) => {
       return (await rawApi.resetDayProgress(userId, payload.dayId)).success;
     case 'clearAllWorkouts':
       return await rawApi.clearAllWorkouts(userId);
+    case 'saveCycle':
+      return (await rawApi.saveCycle(userId, payload)).success;
     case 'updateProfile':
       return (await rawApi.updateProfile(userId, payload)) !== null;
     default:
@@ -182,7 +198,7 @@ export const api = {
     }
   },
 
-  async analyzeWorkoutImage(imageBase64: string): Promise<{ text: string; days: WorkoutDay[]; confidence?: number } | null> {
+  async analyzeWorkoutImage(imageBase64: string): Promise<{ text: string; days: WorkoutDay[]; detectedCycle?: { durationWeeks: number; durationMonths: number; rawMatch: string } | null; confidence?: number } | null> {
     try {
       const res = await fetch(`${BASE_URL}/ocr/analyze-workout`, {
         method: 'POST',
@@ -245,7 +261,7 @@ export const api = {
     }
   },
 
-  async updateProfile(userId: string, data: { name?: string; avatarUrl?: string }): Promise<User | null> {
+  async updateProfile(userId: string, data: { name?: string; email?: string; avatarUrl?: string }): Promise<User | null> {
     if (!isDeviceOnline()) {
       enqueueOfflineMutation(userId, 'updateProfile', data);
       return null;
@@ -256,6 +272,23 @@ export const api = {
       console.warn('[API] Falha de conexão ao atualizar perfil. Enfileirando offline:', err);
       enqueueOfflineMutation(userId, 'updateProfile', data);
       return null;
+    }
+  },
+
+  async saveCycle(userId: string, cycle: WorkoutCycle): Promise<{ success: boolean; version?: number; cycle?: WorkoutCycle }> {
+    if (!isDeviceOnline()) {
+      enqueueOfflineMutation(userId, 'saveCycle', cycle);
+      return { success: true };
+    }
+    try {
+      const res = await rawApi.saveCycle(userId, cycle);
+      if (!res.success) {
+        enqueueOfflineMutation(userId, 'saveCycle', cycle);
+      }
+      return res;
+    } catch {
+      enqueueOfflineMutation(userId, 'saveCycle', cycle);
+      return { success: true };
     }
   },
 

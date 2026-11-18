@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-17T21:22:15.538Z",
+  "timestamp": "2026-11-18T00:17:21.977Z",
   "environment": "QAS (Local Windows)",
   "port": 3001,
   "database": "appfit_db (Local)",
@@ -14,7 +14,7 @@
       "category": "Ambiente QAS",
       "name": "Health Check e Conexão PostgreSQL (appfit_qas_db)",
       "passed": true,
-      "details": "Server Time: 2026-11-17T21:21:49.967Z"
+      "details": "Server Time: 2026-11-18T00:16:57.682Z"
     },
     {
       "category": "Autenticação & Usuários",
@@ -140,7 +140,7 @@
       "category": "Ciclo de Treino",
       "name": "Marcação Atômica de Série Concluída (Feito)",
       "passed": true,
-      "details": "Série set-1794950535236-vzdx-1 concluída"
+      "details": "Série set-1794961041640-3jkv-1 concluída"
     },
     {
       "category": "Ciclo de Treino",
@@ -164,13 +164,13 @@
       "category": "Ciclo de Treino",
       "name": "Registro de Sessão no Histórico (POST /api/sessions)",
       "passed": true,
-      "details": "Session ID: rec-qas-1794950535484"
+      "details": "Session ID: rec-qas-1794961041927"
     },
     {
       "category": "Ciclo de Treino",
       "name": "Consulta ao Histórico de Treinos (GET /api/sessions)",
       "passed": true,
-      "details": "Total no histórico: 1"
+      "details": "Total no histórico: 2"
     },
     {
       "category": "Ciclo de Treino",

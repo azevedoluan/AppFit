@@ -10,6 +10,7 @@
 export type MutationType =
   | 'saveWorkouts'
   | 'saveSession'
+  | 'saveCycle'
   | 'updateSet'
   | 'addSet'
   | 'deleteSets'
