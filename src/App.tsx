@@ -54,13 +54,106 @@ export const App: React.FC = () => {
     return null;
   });
 
-  // User-specific states (loaded dynamically per user)
-  const [workoutDays, setWorkoutDays] = useState<WorkoutDay[]>([]);
-  const [cycle, setCycle] = useState<WorkoutCycle>(() => loadUserCycle(''));
-  const [userName, setUserName] = useState<string>('');
-  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
-  const [selectedDayId, setSelectedDayId] = useState<string>('');
-  const [workoutHistory, setWorkoutHistory] = useState<CompletedWorkoutRecord[]>([]);
+  // User-specific states (hydrated synchronously from local storage if session exists)
+  const [workoutDays, setWorkoutDays] = useState<WorkoutDay[]>(() => {
+    const saved = localStorage.getItem('appfit_current_session_user');
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        if (u?.id) {
+          return loadUserWorkouts(u.id);
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const [cycle, setCycle] = useState<WorkoutCycle>(() => {
+    const saved = localStorage.getItem('appfit_current_session_user');
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        if (u?.id) {
+          return loadUserCycle(u.id);
+        }
+      } catch {}
+    }
+    return loadUserCycle('');
+  });
+
+  const [userName, setUserName] = useState<string>(() => {
+    const saved = localStorage.getItem('appfit_current_session_user');
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        return u?.name || '';
+      } catch {}
+    }
+    return '';
+  });
+
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(() => {
+    const saved = localStorage.getItem('appfit_current_session_user');
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        return u?.avatarUrl || (u?.id ? loadUserAvatar(u.id) : undefined);
+      } catch {}
+    }
+    return undefined;
+  });
+
+  const [selectedDayId, setSelectedDayId] = useState<string>(() => {
+    const saved = localStorage.getItem('appfit_current_session_user');
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        if (u?.id) {
+          const active = loadUserActiveSession(u.id);
+          if (active?.selectedDayId) return active.selectedDayId;
+          const userWorkouts = loadUserWorkouts(u.id);
+          const savedDay = loadUserSelectedDay(u.id);
+          if (userWorkouts.length > 0) {
+            return userWorkouts.some(d => d.id === savedDay) ? savedDay : userWorkouts[0].id;
+          }
+        }
+      } catch {}
+    }
+    return '';
+  });
+
+  const [workoutHistory, setWorkoutHistory] = useState<CompletedWorkoutRecord[]>(() => {
+    const saved = localStorage.getItem('appfit_current_session_user');
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        if (u?.id) {
+          return loadUserWorkoutHistory(u.id);
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  // Initial Sync State: se já temos treinos carregados do cache local, não bloqueamos;
+  // se o usuário está logado mas NÃO possui treinos no cache local, mantemos true
+  // até a sincronização com o PostgreSQL responder (evitando piscar a WelcomeUploadScreen!).
+  const [isInitialSyncing, setIsInitialSyncing] = useState<boolean>(() => {
+    const saved = localStorage.getItem('appfit_current_session_user');
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        if (u?.id) {
+          const local = loadUserWorkouts(u.id);
+          if (local && local.length > 0) {
+            return false;
+          }
+        }
+      } catch {}
+      return true;
+    }
+    return false;
+  });
 
   // Active Workout Stopwatch State
   const [isWorkoutActive, setIsWorkoutActive] = useState(false);
@@ -215,6 +308,7 @@ export const App: React.FC = () => {
           ? userSelectedDay
           : userWorkouts[0].id;
         setSelectedDayId(validDay);
+        setIsInitialSyncing(false);
       } else {
         setSelectedDayId('');
       }
@@ -230,9 +324,12 @@ export const App: React.FC = () => {
               alert('Sua conta foi suspensa ou desativada pelo administrador.');
               return;
             }
-            if (canonical.id !== currentUser.id || canonical.role !== currentUser.role) {
+            if (canonical.id !== currentUser.id) {
               setCurrentUser(canonical);
               return;
+            }
+            if (canonical.role !== currentUser.role) {
+              setCurrentUser(prev => prev ? { ...prev, role: canonical.role } : canonical);
             }
             // Sincroniza dados canônicos de perfil se vierem do banco
             if (canonical.avatarUrl && canonical.avatarUrl !== avatarUrl) {
@@ -311,6 +408,8 @@ export const App: React.FC = () => {
           setIsDbConnected(true);
         } catch (err) {
           console.warn('[PostgreSQL Sync] Erro na sincronização inicial:', err);
+        } finally {
+          setIsInitialSyncing(false);
         }
       };
 
@@ -322,6 +421,7 @@ export const App: React.FC = () => {
       setUserName('');
       setAvatarUrl(undefined);
       setWorkoutHistory([]);
+      setIsInitialSyncing(false);
     }
   }, [currentUser]);
 
@@ -629,6 +729,23 @@ export const App: React.FC = () => {
 
   // Auth Handlers
   const handleLoginSuccess = (user: User) => {
+    localStorage.setItem('appfit_current_session_user', JSON.stringify(user));
+    const cachedWorkouts = loadUserWorkouts(user.id);
+    const cachedCycle = loadUserCycle(user.id);
+    const cachedAvatar = user.avatarUrl || loadUserAvatar(user.id);
+    const cachedDay = loadUserSelectedDay(user.id);
+
+    setWorkoutDays(cachedWorkouts);
+    setCycle(cachedCycle);
+    setUserName(user.name);
+    setAvatarUrl(cachedAvatar);
+    if (cachedWorkouts.length > 0) {
+      setSelectedDayId(cachedWorkouts.some(d => d.id === cachedDay) ? cachedDay : cachedWorkouts[0].id);
+      setIsInitialSyncing(false);
+    } else {
+      setSelectedDayId('');
+      setIsInitialSyncing(true);
+    }
     setCurrentUser(user);
   };
 
@@ -636,8 +753,15 @@ export const App: React.FC = () => {
     if (currentUser) {
       saveUserActiveSession(currentUser.id, null);
     }
+    localStorage.removeItem('appfit_current_session_user');
     setCurrentUser(null);
+    setWorkoutDays([]);
+    setSelectedDayId('');
+    setUserName('');
+    setAvatarUrl(undefined);
+    setWorkoutHistory([]);
     setIsWorkoutActive(false);
+    setIsInitialSyncing(false);
   };
 
   // Workout Session Handlers
@@ -1164,6 +1288,7 @@ export const App: React.FC = () => {
       setSelectedDayId('');
       setIsWorkoutActive(false);
       setIsSettingsModalOpen(false);
+      setIsInitialSyncing(false);
     }
   };
 
@@ -1254,6 +1379,20 @@ export const App: React.FC = () => {
             ))}
           </main>
         </>
+      ) : isInitialSyncing ? (
+        /* Estado de sincronização inicial do PostgreSQL: evita piscar a tela de upload nos primeiros segundos */
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-300">
+          <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mb-4 relative shadow-lg shadow-cyan-950/40">
+            <Sparkles className="w-8 h-8 text-cyan-400 animate-pulse" />
+            <div className="absolute inset-0 rounded-2xl border-2 border-cyan-400 border-t-transparent animate-spin" />
+          </div>
+          <h3 className="text-slate-100 font-black text-lg mb-1 tracking-tight">
+            Sincronizando seus treinos...
+          </h3>
+          <p className="text-slate-400 text-xs max-w-xs font-medium">
+            Carregando sua ficha e histórico personalizado do AppFit
+          </p>
+        </div>
       ) : (
         /* Se este usuário NÃO tiver treino cadastrado, abre a tela para subir o treino (Foto / Planilha / Manual) */
         <WelcomeUploadScreen
@@ -1262,28 +1401,30 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Floating Action Bar (sem o botão do Gemini) */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
-        <div className="max-w-md mx-auto px-6 pb-4 flex items-center justify-between pointer-events-auto">
-          {/* Quick Import Button */}
-          <button
-            onClick={() => setIsImportModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#0e172a]/95 backdrop-blur-md border border-slate-700/80 text-cyan-300 text-xs font-bold shadow-xl hover:bg-slate-800 active:scale-95 transition-all"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-cyan-400" />
-            <span>Ficha / Imagem</span>
-          </button>
+      {/* Floating Action Bar (sem o botão do Gemini) - Oculto durante sincronização inicial sem treino */}
+      {!isInitialSyncing && (
+        <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
+          <div className="max-w-md mx-auto px-6 pb-4 flex items-center justify-between pointer-events-auto">
+            {/* Quick Import Button */}
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#0e172a]/95 backdrop-blur-md border border-slate-700/80 text-cyan-300 text-xs font-bold shadow-xl hover:bg-slate-800 active:scale-95 transition-all"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-cyan-400" />
+              <span>Ficha / Imagem</span>
+            </button>
 
-          {/* Quick Calendar / History Button */}
-          <button
-            onClick={() => setIsHistoryModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#0e172a]/95 backdrop-blur-md border border-slate-700/80 text-slate-200 text-xs font-bold shadow-xl hover:bg-slate-800 active:scale-95 transition-all"
-          >
-            <CalendarIcon className="w-4 h-4 text-teal-400" />
-            <span>Histórico</span>
-          </button>
+            {/* Quick Calendar / History Button */}
+            <button
+              onClick={() => setIsHistoryModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#0e172a]/95 backdrop-blur-md border border-slate-700/80 text-slate-200 text-xs font-bold shadow-xl hover:bg-slate-800 active:scale-95 transition-all"
+            >
+              <CalendarIcon className="w-4 h-4 text-teal-400" />
+              <span>Histórico</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Notificação Visual e Sonora: Fim do Descanso */}
       {restFinishedNotice && (

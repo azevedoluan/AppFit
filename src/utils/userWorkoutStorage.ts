@@ -128,8 +128,15 @@ export function saveUserWorkouts(userId: string, days: WorkoutDay[]): void {
   if (!userId) return;
   try {
     localStorage.setItem(getWorkoutsKey(userId), JSON.stringify(days));
-  } catch {
-    // Ignore error
+  } catch (err) {
+    console.warn('[Storage] Falha ao salvar treinos no localStorage (tentando liberar cache temporário):', err);
+    try {
+      localStorage.removeItem('appfit_ocr_last_result');
+      localStorage.removeItem('appfit_debug_logs');
+      localStorage.setItem(getWorkoutsKey(userId), JSON.stringify(days));
+    } catch {
+      // Se ainda falhar, não trava a execução
+    }
   }
 }
 

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-18T00:17:21.977Z",
+  "timestamp": "2026-11-18T01:23:13.315Z",
   "environment": "QAS (Local Windows)",
   "port": 3001,
   "database": "appfit_db (Local)",
@@ -14,7 +14,7 @@
       "category": "Ambiente QAS",
       "name": "Health Check e Conexão PostgreSQL (appfit_qas_db)",
       "passed": true,
-      "details": "Server Time: 2026-11-18T00:16:57.682Z"
+      "details": "Server Time: 2026-11-18T01:22:50.079Z"
     },
     {
       "category": "Autenticação & Usuários",
@@ -68,7 +68,7 @@
       "category": "Usuário A - Imagem",
       "name": "Persistência no PostgreSQL (POST /api/workouts)",
       "passed": true,
-      "details": "Versão sync: 1"
+      "details": "Versão sync: 2"
     },
     {
       "category": "Usuário A - Imagem",
@@ -116,7 +116,7 @@
       "category": "Usuário B - Planilha",
       "name": "Persistência no PostgreSQL (POST /api/workouts)",
       "passed": true,
-      "details": "Versão sync: 1"
+      "details": "Versão sync: 6"
     },
     {
       "category": "Usuário B - Planilha",
@@ -134,13 +134,13 @@
       "category": "Ciclo de Treino",
       "name": "Alteração Granular de Carga (35kg e 40kg) via PATCH atômico",
       "passed": true,
-      "details": "Versão retornada: 3"
+      "details": "Versão retornada: 8"
     },
     {
       "category": "Ciclo de Treino",
       "name": "Marcação Atômica de Série Concluída (Feito)",
       "passed": true,
-      "details": "Série set-1794961041640-3jkv-1 concluída"
+      "details": "Série set-1794964993131-15em-1 concluída"
     },
     {
       "category": "Ciclo de Treino",
@@ -164,13 +164,13 @@
       "category": "Ciclo de Treino",
       "name": "Registro de Sessão no Histórico (POST /api/sessions)",
       "passed": true,
-      "details": "Session ID: rec-qas-1794961041927"
+      "details": "Session ID: rec-qas-1794964993280"
     },
     {
       "category": "Ciclo de Treino",
       "name": "Consulta ao Histórico de Treinos (GET /api/sessions)",
       "passed": true,
-      "details": "Total no histórico: 2"
+      "details": "Total no histórico: 3"
     },
     {
       "category": "Ciclo de Treino",

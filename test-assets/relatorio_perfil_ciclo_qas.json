@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-18T00:16:44.932Z",
+  "timestamp": "2026-11-18T01:22:39.436Z",
   "environment": "QAS (Local Windows)",
   "port": 3001,
   "database": "appfit_db (Local)",
@@ -38,7 +38,7 @@
       "category": "Perfil do Usuário",
       "name": "Criação do usuário de teste no PostgreSQL",
       "passed": true,
-      "details": "ID: usr_qas_perfil_1794960981245"
+      "details": "ID: usr_qas_perfil_1794964936459"
     },
     {
       "category": "Perfil do Usuário",
@@ -56,7 +56,7 @@
       "category": "Perfil do Usuário",
       "name": "Alteração e Persistência do E-mail",
       "passed": true,
-      "details": "Novo e-mail: luan_atualizado_1794960981444@appfit.test"
+      "details": "Novo e-mail: luan_atualizado_1794964936581@appfit.test"
     },
     {
       "category": "Perfil do Usuário",
@@ -74,7 +74,7 @@
       "category": "Perfil do Usuário",
       "name": "Verificação e Consistência Global do Perfil no PostgreSQL",
       "passed": true,
-      "details": "Nome: Luan Azevedo (Perfil Atualizado), E-mail: luan_atualizado_1794960981444@appfit.test"
+      "details": "Nome: Luan Azevedo (Perfil Atualizado), E-mail: luan_atualizado_1794964936581@appfit.test"
     },
     {
       "category": "Duração do Treino",
